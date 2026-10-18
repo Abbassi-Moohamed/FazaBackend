@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   const server = app.listen(env.PORT, env.HOST, () => {
     logger.info(
       { host: env.HOST, port: env.PORT, env: env.nodeEnv, origin: env.FRONTEND_URL },
-      "MENU SCAN API listening",
+      "Faza API listening",
     );
   });
 

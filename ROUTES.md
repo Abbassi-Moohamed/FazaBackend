@@ -1,4 +1,4 @@
-# MENU SCAN — API Route Reference
+# Faza — API Route Reference
 
 Complete list of every HTTP route registered by the backend.
 

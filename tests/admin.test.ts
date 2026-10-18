@@ -18,7 +18,7 @@ import type {
 const APP_PIN = "3219";
 const DEFAULT_COFFEE_PIN = "0000";
 
-describe("MENU SCAN backoffice", () => {
+describe("Faza backoffice", () => {
   let testDb: TestDatabase;
   let app: Express;
 

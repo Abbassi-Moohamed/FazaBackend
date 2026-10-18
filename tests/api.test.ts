@@ -8,7 +8,7 @@ import { mongoose } from "../src/db/index.js";
 import { setupTestDatabase, teardownTestDatabase, type TestDatabase } from "./helpers.js";
 import type { CoffeeWithCategoriesDto, ItemDto } from "../src/types/index.js";
 
-describe("MENU SCAN public API", () => {
+describe("Faza public API", () => {
   let testDb: TestDatabase;
   let app: Express;
 
@@ -42,7 +42,7 @@ describe("MENU SCAN public API", () => {
       const response = await request(app).get("/");
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.name).toBe("MENU SCAN API");
+      expect(response.body.data.name).toBe("Faza API");
       expect(response.body.data.endpoints.coffeeBySlug).toBe("/api/v1/coffees/:coffeeSlug");
     });
 

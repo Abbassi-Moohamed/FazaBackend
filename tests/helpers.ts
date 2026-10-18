@@ -13,7 +13,7 @@ export interface TestDatabase {
  */
 export async function setupTestDatabase(): Promise<TestDatabase> {
   const server = await MongoMemoryServer.create();
-  const uri = server.getUri("menuscan-test");
+  const uri = server.getUri("faza-test");
 
   await mongoose.connect(uri, { autoIndex: false, serverSelectionTimeoutMS: 5_000 });
   await runMigrations();

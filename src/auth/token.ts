@@ -5,7 +5,7 @@ import type { AdminRole } from "../types/index.js";
 /** Human-readable token lifetime (also embedded in the auth response). */
 export const ADMIN_TOKEN_LIFETIME = env.ADMIN_TOKEN_TTL;
 
-const ISSUER = "menuscan-backend";
+const ISSUER = "faza-backend";
 
 interface AdminTokenPayload {
   role: AdminRole;

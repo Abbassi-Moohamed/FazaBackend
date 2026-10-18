@@ -1,6 +1,6 @@
-# MENU SCAN Backend
+# Faza Backend
 
-MENU SCAN is a multi-coffee-shop digital menu platform. A customer scans a
+Faza is a multi-coffee-shop digital menu platform. A customer scans a
 coffee shop's QR code, the Next.js frontend resolves the shop's public slug,
 and this Express API returns the menu data stored in MongoDB. Coffee-shop
 operators manage their own menu from the backoffice, while an application
@@ -370,7 +370,7 @@ environment variables described below and a reachable MongoDB database.
 | `NODE_ENV` | No | `development`, `test`, or `production`; defaults to `development` |
 | `HOST` | No | Bind host; defaults to `0.0.0.0` |
 | `PORT` | No | Positive TCP port; defaults to `4000` |
-| `DATABASE_URL` | Yes in practice | MongoDB connection string; local default is `mongodb://127.0.0.1:27017/menuscan` |
+| `DATABASE_URL` | Yes in practice | MongoDB connection string; local default is `mongodb://127.0.0.1:27017/faza` |
 | `FRONTEND_URL` | No | Primary allowed Next.js origin; defaults to `http://localhost:3000` |
 | `CORS_ORIGINS` | No | Comma-separated additional origins; `*` is rejected in production |
 | `LOG_LEVEL` | No | Pino level such as `info`, `warn`, or `silent` |
@@ -705,7 +705,7 @@ identity system.
 ### Sessions/tokens
 
 Successful login issues a short-lived JWT signed with `ADMIN_SECRET`, using
-HS256 and issuer `menuscan-backend`. The token contains:
+HS256 and issuer `faza-backend`. The token contains:
 
 ```json
 { "role": "APP_ADMIN" }

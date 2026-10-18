@@ -48,7 +48,7 @@ function pngBuffer(extra = 32): Buffer {
 const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00, 0x00, 0x00]);
 const textBuffer = Buffer.from("definitely not an image", "utf8");
 
-describe("MENU SCAN image uploads (Cloudflare R2)", () => {
+describe("Faza image uploads (Cloudflare R2)", () => {
   let testDb: TestDatabase;
   let app: Express;
 

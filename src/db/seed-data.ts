@@ -1,5 +1,5 @@
 /**
- * Realistic MENU SCAN development data.
+ * Realistic Faza development data.
  *
  * Every coffee owns a DIFFERENT set of categories and items on purpose:
  * this is what proves the multi-tenant isolation actually works when you

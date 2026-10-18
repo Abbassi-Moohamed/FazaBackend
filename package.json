@@ -1,7 +1,7 @@
 {
-  "name": "menuscan-backend",
+  "name": "faza-backend",
   "version": "1.0.0",
-  "description": "MENU SCAN - QR digital menu backend for multiple coffee shops.",
+  "description": "Faza - QR digital menu backend for multiple coffee shops.",
   "private": true,
   "type": "module",
   "engines": {

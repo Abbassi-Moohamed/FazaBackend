@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const DEV_ADMIN_SECRET = "menuscan-dev-admin-secret-do-not-use-in-prod";
+const DEV_ADMIN_SECRET = "faza-dev-admin-secret-do-not-use-in-prod";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -14,7 +14,7 @@ const envSchema = z.object({
    * MongoDB connection string. This is the single source of truth for the
    * database provider/location — change it here and the whole app follows.
    */
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required").default("mongodb://127.0.0.1:27017/menuscan"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required").default("mongodb://127.0.0.1:27017/faza"),
 
   /** Primary CORS origin (the Next.js frontend). */
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
@@ -23,7 +23,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().optional().default(""),
 
   /**
-   * Static PIN for the MENU SCAN application administrator.
+   * Static PIN for the Faza application administrator.
    * Lightweight MVP gate — NOT a substitute for real authentication.
    */
   APP_ADMIN_PIN: z.string().regex(/^\d{4}$/, "APP_ADMIN_PIN must be exactly 4 digits.").default("3219"),

@@ -28,7 +28,7 @@ export interface ItemDto {
   image: string | null;
 }
 
-/** The two administrator levels of the MENU SCAN backoffice. */
+/** The two administrator levels of the Faza backoffice. */
 export type AdminRole = "APP_ADMIN" | "COFFEE_ADMIN";
 
 /**

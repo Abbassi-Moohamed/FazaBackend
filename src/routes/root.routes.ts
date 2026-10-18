@@ -6,7 +6,7 @@ export const rootRouter = Router();
 
 rootRouter.get("/", (_req, res) => {
   sendSuccess(res, {
-    name: "MENU SCAN API",
+    name: "Faza API",
     apiVersion: "v1",
     endpoints: {
       health: "/health",
