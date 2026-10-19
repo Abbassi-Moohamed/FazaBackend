@@ -41,6 +41,18 @@ function expectEvent(socket: ClientSocket, event: string, timeoutMs = 3_000): Pr
   });
 }
 
+/** Subscribes to an order room and resolves only once the server confirms the join. */
+function subscribeToOrder(socket: ClientSocket, orderId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for subscribe ack")), 3_000);
+    socket.emit("order:subscribe", orderId, (result: { joined: boolean }) => {
+      clearTimeout(timer);
+      if (result.joined) resolve();
+      else reject(new Error("Server refused the order subscription"));
+    });
+  });
+}
+
 describe("realtime order events", () => {
   let database: TestDatabase;
   let httpServer: HttpServer;
@@ -96,8 +108,7 @@ describe("realtime order events", () => {
     // The ordering client's session token must never leak to admins.
     expect(newOrder.sessionToken).toBeUndefined();
 
-    customer.emit("order:subscribe", placed.id);
-    await new Promise((resolve) => setTimeout(resolve, 50)); // let the join land
+    await subscribeToOrder(customer, placed.id);
 
     const updatedReceived = expectEvent(customer, "order:updated");
     await openServiceShift(coffeeId, { type: "MORNING" });

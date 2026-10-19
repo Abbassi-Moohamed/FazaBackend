@@ -36,7 +36,7 @@ interface SocketData {
 type PublicOrder = Omit<OrderDto, "sessionToken">;
 
 interface ClientToServerEvents {
-  "order:subscribe": (orderId: string) => void;
+  "order:subscribe": (orderId: string, ack?: (result: { joined: boolean }) => void) => void;
   "order:unsubscribe": (orderId: string) => void;
 }
 
@@ -64,11 +64,22 @@ function orderRoom(orderId: string): string {
 }
 
 function registerClientEvents(socket: RealtimeSocket): void {
-  socket.on(ORDER_SUBSCRIBE_EVENT, (orderId: unknown) => {
-    if (typeof orderId !== "string" || !/^[0-9a-fA-F]{24}$/.test(orderId)) return;
-    void socket.join(orderRoom(orderId));
+  // The ack tells the client (and tests) when the room join is actually in
+  // place — without it, an emit right after subscribe could race the join.
+  socket.on(ORDER_SUBSCRIBE_EVENT, async (orderId, ack) => {
+    if (typeof orderId === "string" && /^[0-9a-fA-F]{24}$/.test(orderId)) {
+      try {
+        await socket.join(orderRoom(orderId));
+        ack?.({ joined: true });
+        return;
+      } catch {
+        ack?.({ joined: false });
+        return;
+      }
+    }
+    ack?.({ joined: false });
   });
-  socket.on(ORDER_UNSUBSCRIBE_EVENT, (orderId: unknown) => {
+  socket.on(ORDER_UNSUBSCRIBE_EVENT, (orderId) => {
     if (typeof orderId !== "string") return;
     void socket.leave(orderRoom(orderId));
   });
@@ -152,6 +163,7 @@ export function publishOrderCreated(order: OrderDto): void {
 export function publishOrderUpdated(order: OrderDto): void {
   if (!io) return;
   const { sessionToken: _sessionToken, ...payload } = order;
-  io.to(coffeeRoom(order.coffeeId)).emit(ORDER_UPDATED_EVENT, payload);
-  io.to(orderRoom(order.id)).emit(ORDER_UPDATED_EVENT, payload);
+  // Single emit over the union of both rooms: Socket.IO delivers at most
+  // once per socket even when it sits in both (dedup is per-socket).
+  io.to(coffeeRoom(order.coffeeId)).to(orderRoom(order.id)).emit(ORDER_UPDATED_EVENT, payload);
 }
