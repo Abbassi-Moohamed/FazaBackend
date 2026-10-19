@@ -1,10 +1,12 @@
 import { CoffeeModel } from "../models/coffee.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
+import { ItemModel } from "../models/item.model.js";
 
 export interface CategoryRecord {
   id: string;
   name: string;
   image: string | null;
+  itemCount: number;
 }
 
 export interface CoffeeWithCategoriesRecord {
@@ -31,6 +33,17 @@ export async function findCoffeeWithCategoriesBySlug(slug: string): Promise<Coff
     .lean()
     .exec();
 
+  // Single grouped query for every category's item count (no per-category N+1).
+  const categoryIds = categories.map((category) => category._id);
+  const counts =
+    categoryIds.length === 0
+      ? []
+      : await ItemModel.aggregate<{ _id: unknown; count: number }>([
+          { $match: { itemCategoryId: { $in: categoryIds } } },
+          { $group: { _id: "$itemCategoryId", count: { $sum: 1 } } },
+        ]).exec();
+  const countById = new Map(counts.map((entry) => [String(entry._id), entry.count]));
+
   return {
     id: coffee._id.toString(),
     name: coffee.name,
@@ -41,6 +54,7 @@ export async function findCoffeeWithCategoriesBySlug(slug: string): Promise<Coff
       id: category._id.toString(),
       name: category.name,
       image: category.image ?? null,
+      itemCount: countById.get(category._id.toString()) ?? 0,
     })),
   };
 }

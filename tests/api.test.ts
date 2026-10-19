@@ -27,8 +27,7 @@ describe("Faza public API", () => {
     await teardownTestDatabase(testDb);
   });
 
-  const names = (categories: { name: string }[]): string[] =>
-    categories.map((category) => category.name).sort();
+  const names = (categories: { name: string }[]): string[] => categories.map((category) => category.name).sort();
 
   async function categoryItems(categoryId: string): Promise<ItemDto[]> {
     const response = await request(app).get(`/api/v1/categories/${categoryId}/items`);
@@ -72,15 +71,13 @@ describe("Faza public API", () => {
       expect(data.slug).toBe("cafe-el-manzah");
       expect(data.logo).toContain("https://");
 
-      expect(names(data.categories)).toEqual([
-        "Boissons chaudes",
-        "Cafés",
-        "Desserts",
-        "Jus",
-        "Petit-déjeuner",
-      ]);
+      expect(names(data.categories)).toEqual(["Boissons chaudes", "Cafés", "Desserts", "Jus", "Petit-déjeuner"]);
       for (const category of data.categories) {
         expect(category.id).toMatch(/^[a-f0-9]{24}$/i);
+        expect(category.itemCount).toBeGreaterThanOrEqual(0);
+        // The advertised count must match what the items endpoint returns.
+        const items = await categoryItems(category.id);
+        expect(category.itemCount).toBe(items.length);
       }
     });
 
@@ -197,17 +194,13 @@ describe("Faza public API", () => {
     });
 
     it("allows the configured frontend origin", async () => {
-      const response = await request(app)
-        .get("/api/v1/coffees/cafe-el-manzah")
-        .set("Origin", "http://localhost:3000");
+      const response = await request(app).get("/api/v1/coffees/cafe-el-manzah").set("Origin", "http://localhost:3000");
       expect(response.status).toBe(200);
       expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
     });
 
     it("rejects unknown origins with a 403 envelope", async () => {
-      const response = await request(app)
-        .get("/api/v1/coffees/cafe-el-manzah")
-        .set("Origin", "https://evil.example");
+      const response = await request(app).get("/api/v1/coffees/cafe-el-manzah").set("Origin", "https://evil.example");
       expect(response.status).toBe(403);
       expect(response.body).toEqual({ success: false, message: "Origin not allowed by CORS" });
     });

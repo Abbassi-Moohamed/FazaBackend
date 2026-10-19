@@ -7,6 +7,8 @@ export interface CategoryDto {
   id: string;
   name: string;
   image: string | null;
+  /** Total items currently in this category (including unavailable ones). */
+  itemCount: number;
 }
 
 export interface CoffeeWithCategoriesDto {
@@ -100,4 +102,12 @@ export interface CoffeeUpdateInput {
 
 export type { OrderStatus } from "../models/order.model.js";
 export type { OrderDto, OrderItemDto } from "./order.js";
-export type { AnalyticsDto, InsightComparison, InsightKpis, InsightTopItem, InsightCategory, InsightPromotionSummary, InsightAvailability } from "./insights.js";
+export type {
+  AnalyticsDto,
+  InsightComparison,
+  InsightKpis,
+  InsightTopItem,
+  InsightCategory,
+  InsightPromotionSummary,
+  InsightAvailability,
+} from "./insights.js";
