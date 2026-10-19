@@ -1,13 +1,16 @@
+import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { connectDatabase, disconnectDatabase } from "./db/index.js";
+import { closeRealtime, initRealtime } from "./realtime/realtime.js";
 import { logger } from "./utils/logger.js";
 
 async function main(): Promise<void> {
   await connectDatabase(env.DATABASE_URL);
 
-  const app = createApp();
-  const server = app.listen(env.PORT, env.HOST, () => {
+  const server = createServer(createApp());
+  initRealtime(server);
+  server.listen(env.PORT, env.HOST, () => {
     logger.info({ host: env.HOST, port: env.PORT, env: env.nodeEnv, origin: env.FRONTEND_URL }, "Faza API listening");
   });
 
@@ -16,6 +19,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, "Shutting down");
+    closeRealtime();
     server.close(async () => {
       await disconnectDatabase();
       process.exit(0);

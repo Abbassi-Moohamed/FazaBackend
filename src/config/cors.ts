@@ -31,10 +31,19 @@ function buildAllowedOrigins(): string[] {
 
 const allowedOrigins = new Set(buildAllowedOrigins());
 
+/**
+ * Shared origin check used by both the REST CORS middleware and the
+ * Socket.IO server, so both surfaces always agree on which browsers
+ * may connect.
+ */
+export function isOriginAllowed(origin: string | undefined): boolean {
+  // Non-browser clients (curl, server-to-server) send no Origin header.
+  return !origin || allowedOrigins.has("*") || allowedOrigins.has(normalizeOrigin(origin));
+}
+
 export const corsOptions: CorsOptions = {
   origin(origin, callback) {
-    // Non-browser clients (curl, server-to-server) send no Origin header.
-    if (!origin || allowedOrigins.has("*") || allowedOrigins.has(normalizeOrigin(origin))) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
       return;
     }

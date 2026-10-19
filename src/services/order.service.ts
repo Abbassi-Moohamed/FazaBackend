@@ -20,6 +20,7 @@ import {
   touchTableSession,
 } from "../repositories/table-session.repository.js";
 import type { OrderDto } from "../types/order.js";
+import { publishOrderCreated, publishOrderUpdated } from "../realtime/realtime.js";
 import { ApiError } from "../utils/ApiError.js";
 import { Types } from "mongoose";
 
@@ -127,7 +128,9 @@ export async function placeOrder(input: {
     serviceShiftId: session.serviceShiftId,
   });
   await touchTableSession(session.session._id);
-  return dto(order.toObject(), session.sessionToken);
+  const result = dto(order.toObject(), session.sessionToken);
+  publishOrderCreated(result);
+  return result;
 }
 
 export async function getCoffeeOrders(
@@ -176,7 +179,9 @@ export async function changeOrderStatus(coffeeId: string, orderId: string, nextS
   if (nextStatus === "CONFIRMED" && activeService && current.tableSessionId) {
     await assignTableSessionToServiceShift(coffeeId, current.tableSessionId, activeService._id);
   }
-  return dto(updated);
+  const result = dto(updated);
+  publishOrderUpdated(result);
+  return result;
 }
 
 export async function validateOrderPayment(coffeeId: string, orderId: string, paidBy: string) {
@@ -186,5 +191,7 @@ export async function validateOrderPayment(coffeeId: string, orderId: string, pa
   if (current.paymentStatus === "PAID") throw new ApiError(409, "Order payment is already validated.");
   const updated = await markOrderPaid(coffeeId, orderId, new Date(), paidBy);
   if (!updated) throw new ApiError(409, "Order payment was already validated or is no longer eligible.");
-  return dto(updated);
+  const result = dto(updated);
+  publishOrderUpdated(result);
+  return result;
 }
