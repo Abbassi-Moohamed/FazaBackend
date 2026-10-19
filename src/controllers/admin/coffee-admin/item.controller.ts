@@ -1,10 +1,5 @@
 import type { Request, Response } from "express";
-import {
-  createItem,
-  deleteItem,
-  listItems,
-  updateItem,
-} from "../../../services/admin/coffee-admin.service.js";
+import { createItem, deleteItem, listItems, updateItem } from "../../../services/admin/coffee-admin.service.js";
 import { sendSuccess } from "../../../utils/http.js";
 
 function adminCoffeeId(req: Request): string {

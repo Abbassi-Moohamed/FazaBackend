@@ -1,6 +1,14 @@
 import { CoffeeModel } from "../models/coffee.model.js";
-import { type OrderStatus, type PaymentStatus } from "../models/order.model.js";
-import { createOrder, findMenuItemsForCoffee, findOrder, findOrderOwnedByCoffee, listOrders, markOrderPaid, updateOrderStatus } from "../repositories/order.repository.js";
+import { type Order, type OrderStatus, type PaymentStatus } from "../models/order.model.js";
+import {
+  createOrder,
+  findMenuItemsForCoffee,
+  findOrder,
+  findOrderOwnedByCoffee,
+  listOrders,
+  markOrderPaid,
+  updateOrderStatus,
+} from "../repositories/order.repository.js";
 import { findCurrentServiceShift } from "../repositories/service-shift.repository.js";
 import {
   createTableSession,
@@ -21,16 +29,22 @@ const transitions: Record<OrderStatus, readonly OrderStatus[]> = {
   REJECTED: [],
 };
 
-function dto(order: any, sessionToken?: string): OrderDto {
+function dto(order: Order, sessionToken?: string): OrderDto {
   return {
-    id: order._id.toString(), coffeeId: order.coffeeId.toString(), tableNumber: order.tableNumber,
-    items: order.items.map((item: any) => ({ ...item, itemId: item.itemId.toString(), image: item.image ?? null })),
-    total: order.total, status: order.status, paymentStatus: order.paymentStatus ?? "UNPAID",
-    paidAt: order.paidAt ?? null, paidBy: order.paidBy ?? null,
+    id: order._id.toString(),
+    coffeeId: order.coffeeId.toString(),
+    tableNumber: order.tableNumber,
+    items: order.items.map((item) => ({ ...item, itemId: item.itemId.toString(), image: item.image ?? null })),
+    total: order.total,
+    status: order.status,
+    paymentStatus: order.paymentStatus ?? "UNPAID",
+    paidAt: order.paidAt ?? null,
+    paidBy: order.paidBy ?? null,
     tableSessionId: order.tableSessionId?.toString() ?? null,
     serviceShiftId: order.serviceShiftId?.toString() ?? null,
     ...(sessionToken ? { sessionToken } : {}),
-    createdAt: order.createdAt, updatedAt: order.updatedAt,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
   };
 }
 
@@ -38,7 +52,12 @@ async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number
   const activeShift = await findCurrentServiceShift(coffeeId.toString());
   let session = suppliedToken ? await findTableSessionByToken(suppliedToken) : null;
   if (suppliedToken) {
-    if (!session || session.status !== "ACTIVE" || session.coffeeId.toString() !== coffeeId.toString() || session.tableNumber !== tableNumber) {
+    if (
+      !session ||
+      session.status !== "ACTIVE" ||
+      session.coffeeId.toString() !== coffeeId.toString() ||
+      session.tableNumber !== tableNumber
+    ) {
       throw new ApiError(401, "Invalid or expired session token.");
     }
     return { session, sessionToken: suppliedToken, serviceShiftId: activeShift?._id ?? null };
@@ -67,16 +86,21 @@ async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number
 }
 
 export async function placeOrder(input: {
-  coffeeSlug: string; tableNumber: number;
+  coffeeSlug: string;
+  tableNumber: number;
   items: { itemId: string; quantity: number }[];
   sessionToken?: string;
 }): Promise<OrderDto> {
   const coffee = await CoffeeModel.findOne({ slug: input.coffeeSlug }).select({ _id: 1 }).lean().exec();
   if (!coffee) throw new ApiError(404, "Coffee not found");
 
-  const menuItems = await findMenuItemsForCoffee(coffee._id.toString(), input.items.map((item) => item.itemId));
+  const menuItems = await findMenuItemsForCoffee(
+    coffee._id.toString(),
+    input.items.map((item) => item.itemId),
+  );
   const byId = new Map(menuItems.map((item) => [item._id.toString(), item]));
-  if (menuItems.length !== input.items.length) throw new ApiError(400, "One or more items do not belong to this coffee.");
+  if (menuItems.length !== input.items.length)
+    throw new ApiError(400, "One or more items do not belong to this coffee.");
 
   let subtotal = 0;
   const snapshots = input.items.map(({ itemId, quantity }) => {
@@ -91,11 +115,7 @@ export async function placeOrder(input: {
   subtotal = Math.round(subtotal * 100) / 100;
   const session = await resolveTableSession(coffee._id, input.tableNumber, input.sessionToken);
   if (session.serviceShiftId) {
-    await assignTableSessionToServiceShift(
-      coffee._id.toString(),
-      session.session._id,
-      session.serviceShiftId,
-    );
+    await assignTableSessionToServiceShift(coffee._id.toString(), session.session._id, session.serviceShiftId);
   }
   const order = await createOrder({
     coffeeId: coffee._id,
@@ -110,7 +130,13 @@ export async function placeOrder(input: {
   return dto(order.toObject(), session.sessionToken);
 }
 
-export async function getCoffeeOrders(coffeeId: string, status?: OrderStatus, paymentStatus?: PaymentStatus, page = 1, limit = 50) {
+export async function getCoffeeOrders(
+  coffeeId: string,
+  status?: OrderStatus,
+  paymentStatus?: PaymentStatus,
+  page = 1,
+  limit = 50,
+) {
   const result = await listOrders(coffeeId, status, paymentStatus, (page - 1) * limit, limit);
   return { orders: result.orders.map((order) => dto(order)), total: result.total, page, limit };
 }
@@ -139,28 +165,16 @@ export async function changeOrderStatus(coffeeId: string, orderId: string, nextS
   if (!transitions[current.status as OrderStatus].includes(nextStatus)) {
     throw new ApiError(409, `Cannot change order status from ${current.status} to ${nextStatus}.`);
   }
-  const activeService = nextStatus === "CONFIRMED"
-    ? await findCurrentServiceShift(coffeeId)
-    : null;
+  const activeService = nextStatus === "CONFIRMED" ? await findCurrentServiceShift(coffeeId) : null;
   if (nextStatus === "CONFIRMED" && !activeService) {
     throw new ApiError(409, "An active service is required before confirming orders.", {
       code: "NO_ACTIVE_SERVICE",
     });
   }
-  const updated = await updateOrderStatus(
-    coffeeId,
-    orderId,
-    nextStatus,
-    new Date(),
-    activeService?._id,
-  );
+  const updated = await updateOrderStatus(coffeeId, orderId, nextStatus, new Date(), activeService?._id);
   if (!updated) throw new ApiError(404, "Order not found");
   if (nextStatus === "CONFIRMED" && activeService && current.tableSessionId) {
-    await assignTableSessionToServiceShift(
-      coffeeId,
-      current.tableSessionId,
-      activeService._id,
-    );
+    await assignTableSessionToServiceShift(coffeeId, current.tableSessionId, activeService._id);
   }
   return dto(updated);
 }

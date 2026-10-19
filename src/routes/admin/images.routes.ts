@@ -1,8 +1,5 @@
 import { Router } from "express";
-import {
-  deleteImageController,
-  uploadImageController,
-} from "../../controllers/admin/image.controller.js";
+import { deleteImageController, uploadImageController } from "../../controllers/admin/image.controller.js";
 import { requireAdmin } from "../../middlewares/auth.middleware.js";
 import { uploadSingleImage } from "../../middlewares/upload.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
@@ -17,9 +14,4 @@ export const adminImagesRouter = Router();
 
 adminImagesRouter.post("/", requireAdmin, uploadSingleImage, uploadImageController);
 
-adminImagesRouter.delete(
-  "/:imageId",
-  requireAdmin,
-  validate({ params: imageIdParamsSchema }),
-  deleteImageController,
-);
+adminImagesRouter.delete("/:imageId", requireAdmin, validate({ params: imageIdParamsSchema }), deleteImageController);

@@ -18,7 +18,13 @@ export async function createOrder(input: Record<string, unknown>) {
   return OrderModel.create(input);
 }
 
-export async function listOrders(coffeeId: string, status?: OrderStatus, paymentStatus?: PaymentStatus, skip = 0, limit = 50) {
+export async function listOrders(
+  coffeeId: string,
+  status?: OrderStatus,
+  paymentStatus?: PaymentStatus,
+  skip = 0,
+  limit = 50,
+) {
   const filter = { coffeeId, ...(status ? { status } : {}), ...(paymentStatus ? { paymentStatus } : {}) };
   const [orders, total] = await Promise.all([
     OrderModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean().exec(),
@@ -59,7 +65,9 @@ export async function updateOrderStatus(
       $push: { statusHistory: { status, changedAt } },
     },
     { returnDocument: "after", runValidators: true },
-  ).lean().exec();
+  )
+    .lean()
+    .exec();
 }
 
 export async function markOrderPaid(coffeeId: string, orderId: string, paidAt: Date, paidBy: string) {
@@ -67,5 +75,7 @@ export async function markOrderPaid(coffeeId: string, orderId: string, paidAt: D
     { _id: orderId, coffeeId, status: "CONFIRMED", paymentStatus: "UNPAID" },
     { $set: { paymentStatus: "PAID", paidAt, paidBy } },
     { returnDocument: "after", runValidators: true },
-  ).lean().exec();
+  )
+    .lean()
+    .exec();
 }

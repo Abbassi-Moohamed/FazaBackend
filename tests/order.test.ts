@@ -25,15 +25,20 @@ describe("visitor ordering", () => {
   it("checks ownership, availability and calculates a promotional total server-side", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec();
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
     expect(coffee).toBeTruthy();
     expect(item).toBeTruthy();
 
     await ItemModel.updateOne({ _id: item!._id }, { $set: { price: 10, promotion: 7 } });
-    const response = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 12,
-      items: [{ itemId: item!._id.toString(), quantity: 2 }],
-    });
+    const response = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 12,
+        items: [{ itemId: item!._id.toString(), quantity: 2 }],
+      });
     expect(response.status).toBe(201);
     expect(response.body.data.total).toBe(14);
     expect(response.body.data.items[0].subtotal).toBe(14);
@@ -46,27 +51,32 @@ describe("visitor ordering", () => {
 
   it("does not accept an item belonging to another coffee", async () => {
     const item = await ItemModel.findOne().lean().exec();
-    const response = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "coffee-leaf", tableNumber: 1,
-      items: [{ itemId: item!._id.toString(), quantity: 1 }],
-    });
+    const response = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "coffee-leaf",
+        tableNumber: 1,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
     expect(response.status).toBe(400);
   });
 
   it("blocks confirmation when the coffee has no active service", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec();
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
     await ServiceShiftModel.deleteMany({ coffeeId: coffee!._id });
-    const created = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah",
-      tableNumber: 2,
-      items: [{ itemId: item!._id.toString(), quantity: 1 }],
-    });
+    const created = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 2,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
 
-    await expect(
-      changeOrderStatus(coffee!._id.toString(), created.body.data.id, "CONFIRMED"),
-    ).rejects.toMatchObject({
+    await expect(changeOrderStatus(coffee!._id.toString(), created.body.data.id, "CONFIRMED")).rejects.toMatchObject({
       statusCode: 409,
       details: { code: "NO_ACTIVE_SERVICE" },
     });
@@ -76,11 +86,16 @@ describe("visitor ordering", () => {
   it("scopes coffee-admin order operations and enforces status transitions", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec();
-    const created = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 1,
-      items: [{ itemId: item!._id.toString(), quantity: 1 }],
-    });
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    const created = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 1,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
     const login = await request(app).post("/api/v1/admin/auth/coffee/cafe-el-manzah").send({ pin: "0000" });
     const token = login.body.data.token as string;
     await ServiceShiftModel.create({
@@ -95,21 +110,31 @@ describe("visitor ordering", () => {
     expect(listed.status).toBe(200);
     expect(listed.body.data.orders.some((order: { id: string }) => order.id === orderId)).toBe(true);
 
-    const confirmed = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
-      .set("Authorization", `Bearer ${token}`).send({ status: "CONFIRMED" });
+    const confirmed = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "CONFIRMED" });
     expect(confirmed.status).toBe(200);
-    const invalid = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
-      .set("Authorization", `Bearer ${token}`).send({ status: "REJECTED" });
+    const invalid = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "REJECTED" });
     expect(invalid.status).toBe(409);
   });
 
   it("allows only a confirmed unpaid order to be marked paid", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec();
-    const created = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 8, items: [{ itemId: item!._id.toString(), quantity: 1 }],
-    });
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    const created = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 8,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
     const login = await request(app).post("/api/v1/admin/auth/coffee/cafe-el-manzah").send({ pin: "0000" });
     const token = login.body.data.token as string;
     await ServiceShiftModel.create({
@@ -121,19 +146,24 @@ describe("visitor ordering", () => {
     });
     const orderId = created.body.data.id as string;
 
-    const pendingPayment = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
+    const pendingPayment = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
       .set("Authorization", `Bearer ${token}`);
     expect(pendingPayment.status).toBe(409);
 
-    await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
-      .set("Authorization", `Bearer ${token}`).send({ status: "CONFIRMED" });
-    const paid = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
+    await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "CONFIRMED" });
+    const paid = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
       .set("Authorization", `Bearer ${token}`);
     expect(paid.status).toBe(200);
     expect(paid.body.data.paymentStatus).toBe("PAID");
     expect(paid.body.data.paidAt).toBeTruthy();
 
-    const duplicate = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
+    const duplicate = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
       .set("Authorization", `Bearer ${token}`);
     expect(duplicate.status).toBe(409);
     const stored = await OrderModel.findById(orderId).lean().exec();
@@ -143,15 +173,22 @@ describe("visitor ordering", () => {
   it("does not allow a visitor or another coffee admin to validate payment", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec();
-    const created = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 9, items: [{ itemId: item!._id.toString(), quantity: 1 }],
-    });
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    const created = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 9,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
     const orderId = created.body.data.id as string;
     const visitor = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`);
     expect(visitor.status).toBe(401);
     const otherAdmin = await request(app).post("/api/v1/admin/auth/coffee/coffee-leaf").send({ pin: "0000" });
-    const wrongCoffee = await request(app).patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
+    const wrongCoffee = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
       .set("Authorization", `Bearer ${otherAdmin.body.data.token}`);
     expect(wrongCoffee.status).toBe(404);
   });

@@ -30,30 +30,44 @@ describe("table sessions and service shifts", () => {
     token = login.body.data.token;
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
-    itemId = (await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } }).lean().exec())!._id.toString();
+    itemId = (await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec())!._id.toString();
   });
 
   afterAll(async () => teardownTestDatabase(database));
 
   it("issues and validates a server-generated token while grouping orders by table", async () => {
-    const first = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 4, items: [{ itemId, quantity: 1 }],
-    });
+    const first = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 4,
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(first.status).toBe(201);
     expect(first.body.data.sessionToken).toEqual(expect.any(String));
     expect(first.body.data.serviceShiftId).toBeNull();
 
-    const second = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 4, sessionToken: first.body.data.sessionToken,
-      items: [{ itemId, quantity: 1 }],
-    });
+    const second = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 4,
+        sessionToken: first.body.data.sessionToken,
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(second.status).toBe(201);
     expect(second.body.data.tableSessionId).toBe(first.body.data.tableSessionId);
 
-    const invalid = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 4, sessionToken: "not-a-real-session-token",
-      items: [{ itemId, quantity: 1 }],
-    });
+    const invalid = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 4,
+        sessionToken: "not-a-real-session-token",
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(invalid.status).toBe(401);
   });
 
@@ -71,9 +85,13 @@ describe("table sessions and service shifts", () => {
       .send({});
     expect(duplicate.status).toBe(409);
 
-    const order = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 8, items: [{ itemId, quantity: 1 }],
-    });
+    const order = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 8,
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(order.status).toBe(201);
     expect(order.body.data.serviceShiftId).toBe(shiftId);
 
@@ -95,16 +113,17 @@ describe("table sessions and service shifts", () => {
   });
 
   it("treats repeated table closure as idempotent", async () => {
-    const order = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 11, items: [{ itemId, quantity: 1 }],
-    });
+    const order = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 11,
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(order.status).toBe(201);
     const sessionId = order.body.data.tableSessionId as string;
 
-    await OrderModel.updateOne(
-      { _id: order.body.data.id },
-      { $set: { status: "REJECTED" } },
-    ).exec();
+    await OrderModel.updateOne({ _id: order.body.data.id }, { $set: { status: "REJECTED" } }).exec();
 
     const first = await request(app)
       .patch(`/api/v1/admin/my-coffee/table-sessions/${sessionId}/close`)
@@ -128,9 +147,13 @@ describe("table sessions and service shifts", () => {
       name: "Morning",
       openedByRole: "COFFEE_ADMIN",
     });
-    const order = await request(app).post("/api/v1/orders").send({
-      coffeeSlug: "cafe-el-manzah", tableNumber: 12, items: [{ itemId, quantity: 1 }],
-    });
+    const order = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 12,
+        items: [{ itemId, quantity: 1 }],
+      });
     expect(order.status).toBe(201);
     const orderId = order.body.data.id as string;
     const sessionId = order.body.data.tableSessionId as string;

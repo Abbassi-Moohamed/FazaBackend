@@ -102,10 +102,7 @@ export async function attachImageToEntity(imageId: string | null, coffeeId: stri
   if (!imageId || coffeeId.length === 0) return;
   assertValidCoffeeId(coffeeId);
   try {
-    await ImageModel.updateOne(
-      { imageId },
-      { $set: { ownerType: "COFFEE", coffeeId: new Types.ObjectId(coffeeId) } },
-    );
+    await ImageModel.updateOne({ imageId }, { $set: { ownerType: "COFFEE", coffeeId: new Types.ObjectId(coffeeId) } });
   } catch (error) {
     logger.warn({ err: error, imageId, coffeeId }, "Failed to mark image as owned by its coffee");
   }

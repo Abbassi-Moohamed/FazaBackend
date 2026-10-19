@@ -22,4 +22,10 @@ adminRouter.use("/auth", adminAuthRouter);
 adminRouter.use("/coffees", appAdminCoffeesRouter);
 adminRouter.use("/my-coffee", coffeeAdminRouter);
 adminRouter.use("/images", adminImagesRouter);
-adminRouter.get("/insights", requireAdmin, requireAppAdmin, validate({ query: insightsQuerySchema }), getPlatformInsightsController);
+adminRouter.get(
+  "/insights",
+  requireAdmin,
+  requireAppAdmin,
+  validate({ query: insightsQuerySchema }),
+  getPlatformInsightsController,
+);

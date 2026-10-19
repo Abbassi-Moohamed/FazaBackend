@@ -47,7 +47,10 @@ export async function listCategoriesOfCoffee(coffeeId: string): Promise<AdminCat
     { $group: { _id: "$itemCategoryId", count: { $sum: 1 } } },
   ]).exec();
   const countByCategory = new Map(counts.map((row) => [row._id.toString(), Number(row.count)]));
-  return categories.map((category) => ({ ...toRow(category), itemCount: countByCategory.get(category._id.toString()) ?? 0 }));
+  return categories.map((category) => ({
+    ...toRow(category),
+    itemCount: countByCategory.get(category._id.toString()) ?? 0,
+  }));
 }
 
 export async function listCategoryImageIdsOfCoffee(coffeeId: string): Promise<string[]> {
@@ -112,10 +115,7 @@ export async function updateCategoryOwnedByCoffee(
  */
 export async function deleteCategoryOwnedByCoffee(coffeeId: string, categoryId: string): Promise<boolean> {
   if (!Types.ObjectId.isValid(coffeeId) || !Types.ObjectId.isValid(categoryId)) return false;
-  const category = await ItemCategoryModel.findOne({ _id: categoryId, coffeeId })
-    .select({ _id: 1 })
-    .lean()
-    .exec();
+  const category = await ItemCategoryModel.findOne({ _id: categoryId, coffeeId }).select({ _id: 1 }).lean().exec();
   if (!category) return false;
 
   await ItemModel.deleteMany({ itemCategoryId: category._id });

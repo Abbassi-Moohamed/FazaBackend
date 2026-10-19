@@ -21,15 +21,33 @@ export interface AnalyticsRangeResult {
 }
 
 const zero: AnalyticsRangeResult = {
-  totalOrders: 0, confirmedOrders: 0, pendingOrders: 0, rejectedOrders: 0,
-  confirmedRevenue: 0, paidRevenue: 0, outstandingRevenue: 0, paymentRate: 0, itemsSold: 0, trend: [], topItems: [], peakHours: [], busiestDays: [], tables: [],
+  totalOrders: 0,
+  confirmedOrders: 0,
+  pendingOrders: 0,
+  rejectedOrders: 0,
+  confirmedRevenue: 0,
+  paidRevenue: 0,
+  outstandingRevenue: 0,
+  paymentRate: 0,
+  itemsSold: 0,
+  trend: [],
+  topItems: [],
+  peakHours: [],
+  busiestDays: [],
+  tables: [],
 };
 
 function objectId(value?: string): Types.ObjectId | undefined {
   return value && Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : undefined;
 }
 
-export async function aggregateAnalytics(coffeeId: string | undefined, from: Date, to: Date, granularity: "hour" | "day" | "week" | "month", serviceShiftId?: string): Promise<AnalyticsRangeResult> {
+export async function aggregateAnalytics(
+  coffeeId: string | undefined,
+  from: Date,
+  to: Date,
+  granularity: "hour" | "day" | "week" | "month",
+  serviceShiftId?: string,
+): Promise<AnalyticsRangeResult> {
   const match: Record<string, unknown> = { createdAt: { $gte: from, $lt: to } };
   const id = objectId(coffeeId);
   if (coffeeId && !id) return zero;
@@ -41,22 +59,83 @@ export async function aggregateAnalytics(coffeeId: string | undefined, from: Dat
   const dateFormat = granularity === "hour" ? "%Y-%m-%dT%H:00:00.000Z" : granularity === "month" ? "%Y-%m" : "%Y-%m-%d";
   const pipeline = [
     { $match: match },
-    { $facet: {
-      statuses: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
-      summary: [{ $match: { status: "CONFIRMED" } }, { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: "$total" }, items: { $sum: { $sum: "$items.quantity" } } } }],
-      payment: [{ $match: { status: "CONFIRMED" } }, { $group: { _id: "$paymentStatus", revenue: { $sum: "$total" } } }],
-      trend: [{ $match: { status: "CONFIRMED" } }, { $project: { bucket: { $dateToString: { format: dateFormat, date: "$createdAt", timezone: "UTC" } }, total: 1 } }, { $group: { _id: "$bucket", revenue: { $sum: "$total" }, orders: { $sum: 1 } } }, { $sort: { _id: 1 } }],
-      items: [{ $match: { status: "CONFIRMED" } }, { $unwind: "$items" }, { $group: { _id: "$items.itemId", name: { $first: "$items.name" }, quantitySold: { $sum: "$items.quantity" }, revenue: { $sum: "$items.subtotal" } } }, { $sort: { quantitySold: -1, revenue: -1 } }, { $limit: 10 }],
-      hours: [{ $match: { status: "CONFIRMED" } }, { $group: { _id: { $hour: { date: "$createdAt", timezone: "UTC" } }, orders: { $sum: 1 } } }, { $sort: { _id: 1 } }],
-      days: [{ $match: { status: "CONFIRMED" } }, { $group: { _id: { $dayOfWeek: { date: "$createdAt", timezone: "UTC" } }, orders: { $sum: 1 }, revenue: { $sum: "$total" } } }, { $sort: { _id: 1 } }],
-      tables: [{ $match: { status: "CONFIRMED" } }, { $group: { _id: "$tableNumber", orders: { $sum: 1 }, revenue: { $sum: "$total" } } }, { $sort: { orders: -1, revenue: -1 } }, { $limit: 10 }],
-    } },
+    {
+      $facet: {
+        statuses: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+        summary: [
+          { $match: { status: "CONFIRMED" } },
+          {
+            $group: {
+              _id: null,
+              orders: { $sum: 1 },
+              revenue: { $sum: "$total" },
+              items: { $sum: { $sum: "$items.quantity" } },
+            },
+          },
+        ],
+        payment: [
+          { $match: { status: "CONFIRMED" } },
+          { $group: { _id: "$paymentStatus", revenue: { $sum: "$total" } } },
+        ],
+        trend: [
+          { $match: { status: "CONFIRMED" } },
+          {
+            $project: {
+              bucket: { $dateToString: { format: dateFormat, date: "$createdAt", timezone: "UTC" } },
+              total: 1,
+            },
+          },
+          { $group: { _id: "$bucket", revenue: { $sum: "$total" }, orders: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ],
+        items: [
+          { $match: { status: "CONFIRMED" } },
+          { $unwind: "$items" },
+          {
+            $group: {
+              _id: "$items.itemId",
+              name: { $first: "$items.name" },
+              quantitySold: { $sum: "$items.quantity" },
+              revenue: { $sum: "$items.subtotal" },
+            },
+          },
+          { $sort: { quantitySold: -1, revenue: -1 } },
+          { $limit: 10 },
+        ],
+        hours: [
+          { $match: { status: "CONFIRMED" } },
+          { $group: { _id: { $hour: { date: "$createdAt", timezone: "UTC" } }, orders: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ],
+        days: [
+          { $match: { status: "CONFIRMED" } },
+          {
+            $group: {
+              _id: { $dayOfWeek: { date: "$createdAt", timezone: "UTC" } },
+              orders: { $sum: 1 },
+              revenue: { $sum: "$total" },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ],
+        tables: [
+          { $match: { status: "CONFIRMED" } },
+          { $group: { _id: "$tableNumber", orders: { $sum: 1 }, revenue: { $sum: "$total" } } },
+          { $sort: { orders: -1, revenue: -1 } },
+          { $limit: 10 },
+        ],
+      },
+    },
   ] as unknown as PipelineStage[];
   const [row] = await OrderModel.aggregate(pipeline).allowDiskUse(true).exec();
   if (!row) return zero;
-  const counts = new Map<string, number>((row.statuses ?? []).map((v: { _id: string; count: number }) => [v._id, v.count]));
+  const counts = new Map<string, number>(
+    (row.statuses ?? []).map((v: { _id: string; count: number }) => [v._id, v.count]),
+  );
   const summary = row.summary?.[0] ?? {};
-  const paymentRows = new Map<string, number>((row.payment ?? []).map((v: { _id: string; revenue: number }) => [v._id, Number(v.revenue ?? 0)]));
+  const paymentRows = new Map<string, number>(
+    (row.payment ?? []).map((v: { _id: string; revenue: number }) => [v._id, Number(v.revenue ?? 0)]),
+  );
   const confirmedRevenue = Number(summary.revenue ?? 0);
   const paidRevenue = paymentRows.get("PAID") ?? 0;
   return {
@@ -69,11 +148,30 @@ export async function aggregateAnalytics(coffeeId: string | undefined, from: Dat
     outstandingRevenue: Math.max(0, confirmedRevenue - paidRevenue),
     paymentRate: confirmedRevenue === 0 ? 0 : (paidRevenue / confirmedRevenue) * 100,
     itemsSold: Number(summary.items ?? 0),
-    trend: (row.trend ?? []).map((v: { _id: string; revenue: number; orders: number }) => ({ bucket: v._id, revenue: v.revenue, orders: v.orders })),
-    topItems: (row.items ?? []).map((v: { _id: Types.ObjectId; name: string; quantitySold: number; revenue: number }) => ({ itemId: String(v._id), name: v.name, quantitySold: v.quantitySold, revenue: v.revenue })),
+    trend: (row.trend ?? []).map((v: { _id: string; revenue: number; orders: number }) => ({
+      bucket: v._id,
+      revenue: v.revenue,
+      orders: v.orders,
+    })),
+    topItems: (row.items ?? []).map(
+      (v: { _id: Types.ObjectId; name: string; quantitySold: number; revenue: number }) => ({
+        itemId: String(v._id),
+        name: v.name,
+        quantitySold: v.quantitySold,
+        revenue: v.revenue,
+      }),
+    ),
     peakHours: (row.hours ?? []).map((v: { _id: number; orders: number }) => ({ hour: v._id, orders: v.orders })),
-    busiestDays: (row.days ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({ dayOfWeek: v._id, orders: v.orders, revenue: v.revenue })),
-    tables: (row.tables ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({ tableNumber: v._id, orders: v.orders, revenue: v.revenue })),
+    busiestDays: (row.days ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({
+      dayOfWeek: v._id,
+      orders: v.orders,
+      revenue: v.revenue,
+    })),
+    tables: (row.tables ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({
+      tableNumber: v._id,
+      orders: v.orders,
+      revenue: v.revenue,
+    })),
   };
 }
 
@@ -91,6 +189,9 @@ export async function getAvailability(coffeeId: string): Promise<{ availableItem
 
 export async function getPlatformCounts(): Promise<{ totalCoffees: number; activeCoffees: number }> {
   const { CoffeeModel } = await import("../models/coffee.model.js");
-  const [totalCoffees, activeCoffees] = await Promise.all([CoffeeModel.countDocuments(), CoffeeModel.countDocuments({})]);
+  const [totalCoffees, activeCoffees] = await Promise.all([
+    CoffeeModel.countDocuments(),
+    CoffeeModel.countDocuments({}),
+  ]);
   return { totalCoffees, activeCoffees };
 }

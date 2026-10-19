@@ -21,7 +21,11 @@ const orderSchema = new Schema(
   {
     coffeeId: { type: Schema.Types.ObjectId, ref: "Coffee", required: true, index: true },
     tableNumber: { type: Number, required: true, min: 1, max: 10000 },
-    items: { type: [orderItemSchema], required: true, validate: [(value: unknown[]) => value.length > 0, "An order must contain at least one item."] },
+    items: {
+      type: [orderItemSchema],
+      required: true,
+      validate: [(value: unknown[]) => value.length > 0, "An order must contain at least one item."],
+    },
     total: { type: Number, required: true, min: 0 },
     status: { type: String, enum: ORDER_STATUSES, default: "PENDING", index: true },
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: "UNPAID", index: true },

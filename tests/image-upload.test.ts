@@ -30,12 +30,7 @@ import {
   IMAGE_MAX_SIZE_BYTES,
   uploadCloudflareImage,
 } from "../src/services/cloudflare-images.service.js";
-import type {
-  AdminAuthDto,
-  AdminImageDto,
-  AdminItemDto,
-  CoffeeWithCategoriesDto,
-} from "../src/types/index.js";
+import type { AdminAuthDto, AdminImageDto, AdminItemDto, CoffeeWithCategoriesDto } from "../src/types/index.js";
 
 const APP_PIN = "3219";
 const DEFAULT_COFFEE_PIN = "0000";
@@ -86,7 +81,12 @@ describe("Faza image uploads (Cloudflare R2)", () => {
 
   const bearer = (token: string): [string, string] => ["Authorization", `Bearer ${token}`];
 
-  async function uploadAs(token: string, buffer: Buffer, filename: string, contentType: string): Promise<request.Response> {
+  async function uploadAs(
+    token: string,
+    buffer: Buffer,
+    filename: string,
+    contentType: string,
+  ): Promise<request.Response> {
     return request(app)
       .post("/api/v1/admin/images")
       .set(...bearer(token))
@@ -128,7 +128,9 @@ describe("Faza image uploads (Cloudflare R2)", () => {
 
       // Never leak credentials — the response is exactly { imageId, url }.
       expect(Object.keys(response.body.data).sort()).toEqual(["imageId", "url"]);
-      expect(JSON.stringify(response.body)).not.toMatch(/access_key|secret_access_key|CLOUDFLARE_R2_SECRET_ACCESS_KEY/i);
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /access_key|secret_access_key|CLOUDFLARE_R2_SECRET_ACCESS_KEY/i,
+      );
 
       // Metadata recorded in MongoDB only (no binary is stored).
       const doc = await ImageModel.findOne({ imageId: "fake-image-1" }).lean().exec();
@@ -182,7 +184,9 @@ describe("Faza image uploads (Cloudflare R2)", () => {
 
     it("rejects a request with no file (400)", async () => {
       const token = await coffeeToken("cafe-el-manzah");
-      const response = await request(app).post("/api/v1/admin/images").set(...bearer(token));
+      const response = await request(app)
+        .post("/api/v1/admin/images")
+        .set(...bearer(token));
       expect(response.status).toBe(400);
       expect(response.body.message).toMatch(/No image file/);
     });
@@ -198,7 +202,9 @@ describe("Faza image uploads (Cloudflare R2)", () => {
 
     it("returns 404 for an unknown image id", async () => {
       const token = await coffeeToken("cafe-el-manzah");
-      const response = await request(app).delete("/api/v1/admin/images/does-not-exist").set(...bearer(token));
+      const response = await request(app)
+        .delete("/api/v1/admin/images/does-not-exist")
+        .set(...bearer(token));
       expect(response.status).toBe(404);
       expect(response.body.message).toBe("Image not found");
     });
@@ -207,7 +213,9 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       const token = await coffeeToken("cafe-el-manzah");
       await uploadAs(token, pngBuffer(), "logo.png", "image/png");
 
-      const response = await request(app).delete("/api/v1/admin/images/fake-image-1").set(...bearer(token));
+      const response = await request(app)
+        .delete("/api/v1/admin/images/fake-image-1")
+        .set(...bearer(token));
       expect(response.status).toBe(200);
       expect(response.body.data).toEqual({ id: "fake-image-1" });
       expect(vi.mocked(deleteCloudflareImage)).toHaveBeenCalledWith("fake-image-1");
@@ -219,7 +227,9 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       const tokenB = await coffeeToken("brew-and-beans");
       await uploadAs(tokenA, pngBuffer(), "logo.png", "image/png");
 
-      const response = await request(app).delete("/api/v1/admin/images/fake-image-1").set(...bearer(tokenB));
+      const response = await request(app)
+        .delete("/api/v1/admin/images/fake-image-1")
+        .set(...bearer(tokenB));
       expect(response.status).toBe(403);
       expect(vi.mocked(deleteCloudflareImage)).not.toHaveBeenCalled();
     });
@@ -252,9 +262,7 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect(created.status).toBe(201);
 
       const itemId = (created.body.data as AdminItemDto).id;
-      const raw = await mongoose.connection
-        .collection("items")
-        .findOne({ _id: new mongoose.Types.ObjectId(itemId) });
+      const raw = await mongoose.connection.collection("items").findOne({ _id: new mongoose.Types.ObjectId(itemId) });
       expect(raw!.image).toBe(deliveryUrl("fake-image-1"));
       expect(raw!.imageId).toBe("fake-image-1");
 
@@ -273,9 +281,7 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect(created.status).toBe(201);
 
       const itemId = (created.body.data as AdminItemDto).id;
-      const raw = await mongoose.connection
-        .collection("items")
-        .findOne({ _id: new mongoose.Types.ObjectId(itemId) });
+      const raw = await mongoose.connection.collection("items").findOne({ _id: new mongoose.Types.ObjectId(itemId) });
       expect(raw!.image).toBe("https://picsum.photos/seed/manzah-x/400/300");
       expect(raw!.imageId).toBeNull();
       expect(vi.mocked(deleteCloudflareImage)).not.toHaveBeenCalled();
@@ -336,10 +342,14 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       const firstId = await createItem();
       const secondId = await createItem();
 
-      await request(app).delete(`/api/v1/admin/my-coffee/items/${firstId}`).set(...bearer(token));
+      await request(app)
+        .delete(`/api/v1/admin/my-coffee/items/${firstId}`)
+        .set(...bearer(token));
       expect(vi.mocked(deleteCloudflareImage)).not.toHaveBeenCalled();
 
-      await request(app).delete(`/api/v1/admin/my-coffee/items/${secondId}`).set(...bearer(token));
+      await request(app)
+        .delete(`/api/v1/admin/my-coffee/items/${secondId}`)
+        .set(...bearer(token));
       expect(vi.mocked(deleteCloudflareImage)).toHaveBeenCalledWith("fake-image-1");
       expect(await ImageModel.exists({ imageId: "fake-image-1" })).toBeNull();
     });

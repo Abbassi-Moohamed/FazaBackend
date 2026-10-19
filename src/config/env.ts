@@ -26,7 +26,10 @@ const envSchema = z.object({
    * Static PIN for the Faza application administrator.
    * Lightweight MVP gate — NOT a substitute for real authentication.
    */
-  APP_ADMIN_PIN: z.string().regex(/^\d{4}$/, "APP_ADMIN_PIN must be exactly 4 digits.").default("3219"),
+  APP_ADMIN_PIN: z
+    .string()
+    .regex(/^\d{4}$/, "APP_ADMIN_PIN must be exactly 4 digits.")
+    .default("3219"),
 
   /**
    * Secret used to sign the short-lived admin bearer tokens (HS256).
@@ -43,7 +46,10 @@ const envSchema = z.object({
   CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string().default(""),
   CLOUDFLARE_R2_BUCKET_NAME: z
     .string()
-    .regex(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/, "CLOUDFLARE_R2_BUCKET_NAME must use lowercase letters, numbers, dots, or hyphens.")
+    .regex(
+      /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/,
+      "CLOUDFLARE_R2_BUCKET_NAME must use lowercase letters, numbers, dots, or hyphens.",
+    )
     .default(""),
   CLOUDFLARE_R2_ENDPOINT: z.union([z.string().url(), z.literal("")]).default(""),
   CLOUDFLARE_R2_PUBLIC_URL: z.union([z.string().url(), z.literal("")]).default(""),
@@ -68,7 +74,7 @@ const data = parsed.data;
 // The development default signer secret must never ship to production.
 if (data.NODE_ENV === "production" && data.ADMIN_SECRET === DEV_ADMIN_SECRET) {
   console.error(
-    'Invalid environment configuration: ADMIN_SECRET must be overridden in production (the default dev value is not allowed).',
+    "Invalid environment configuration: ADMIN_SECRET must be overridden in production (the default dev value is not allowed).",
   );
   process.exit(1);
 }

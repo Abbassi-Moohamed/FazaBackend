@@ -10,7 +10,14 @@ import { ItemModel } from "../../models/item.model.js";
  */
 
 const SAFE_FIELDS = {
-  name: 1, slug: 1, logo: 1, logoImageId: 1, cover: 1, coverImageId: 1, createdAt: 1, updatedAt: 1,
+  name: 1,
+  slug: 1,
+  logo: 1,
+  logoImageId: 1,
+  cover: 1,
+  coverImageId: 1,
+  createdAt: 1,
+  updatedAt: 1,
 } as const;
 
 export interface AdminCoffeeCreateInput {
@@ -45,7 +52,13 @@ export async function findAdminCoffeeById(id: string): Promise<AdminCoffeeRow | 
   const coffee = await CoffeeModel.findById(id).select(SAFE_FIELDS).lean().exec();
   if (!coffee) return null;
   const categoryCount = await ItemCategoryModel.countDocuments({ coffeeId: coffee._id });
-  return { ...coffee, logoImageId: coffee.logoImageId ?? null, cover: coffee.cover ?? null, coverImageId: coffee.coverImageId ?? null, categoryCount };
+  return {
+    ...coffee,
+    logoImageId: coffee.logoImageId ?? null,
+    cover: coffee.cover ?? null,
+    coverImageId: coffee.coverImageId ?? null,
+    categoryCount,
+  };
 }
 
 export async function listAdminCoffees(): Promise<AdminCoffeeRow[]> {
@@ -116,7 +129,14 @@ export async function isCoffeeSlugTaken(slug: string, excludeId?: string): Promi
 
 export async function updateAdminCoffee(
   id: string,
-  patch: Partial<{ name: string; logo: string; slug: string; logoImageId: string | null; cover: string | null; coverImageId: string | null }>,
+  patch: Partial<{
+    name: string;
+    logo: string;
+    slug: string;
+    logoImageId: string | null;
+    cover: string | null;
+    coverImageId: string | null;
+  }>,
 ): Promise<AdminCoffeeRow | null> {
   if (!Types.ObjectId.isValid(id)) return null;
   const coffee = await CoffeeModel.findByIdAndUpdate(id, patch, {
@@ -128,7 +148,13 @@ export async function updateAdminCoffee(
     .exec();
   if (!coffee) return null;
   const categoryCount = await ItemCategoryModel.countDocuments({ coffeeId: coffee._id });
-  return { ...coffee, logoImageId: coffee.logoImageId ?? null, cover: coffee.cover ?? null, coverImageId: coffee.coverImageId ?? null, categoryCount };
+  return {
+    ...coffee,
+    logoImageId: coffee.logoImageId ?? null,
+    cover: coffee.cover ?? null,
+    coverImageId: coffee.coverImageId ?? null,
+    categoryCount,
+  };
 }
 
 export async function updateCoffeePinHash(id: string, adminPinHash: string): Promise<boolean> {

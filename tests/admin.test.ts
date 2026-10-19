@@ -144,13 +144,17 @@ describe("Faza backoffice", () => {
 
     it("forbids a coffee admin from the app admin endpoints (403)", async () => {
       const token = await coffeeToken("cafe-el-manzah");
-      const response = await request(app).get("/api/v1/admin/coffees").set(...bearer(token));
+      const response = await request(app)
+        .get("/api/v1/admin/coffees")
+        .set(...bearer(token));
       expect(response.status).toBe(403);
     });
 
     it("forbids the app admin from the coffee admin endpoints (403)", async () => {
       const token = await appToken();
-      const response = await request(app).get("/api/v1/admin/my-coffee").set(...bearer(token));
+      const response = await request(app)
+        .get("/api/v1/admin/my-coffee")
+        .set(...bearer(token));
       expect(response.status).toBe(403);
     });
   });
@@ -161,7 +165,9 @@ describe("Faza backoffice", () => {
     it("5. can read and update their own coffee information", async () => {
       const token = await coffeeToken("cafe-el-manzah");
 
-      const read = await request(app).get("/api/v1/admin/my-coffee").set(...bearer(token));
+      const read = await request(app)
+        .get("/api/v1/admin/my-coffee")
+        .set(...bearer(token));
       expect(read.status).toBe(200);
       const mine = read.body.data as AdminCoffeeDto;
       expect(mine.slug).toBe("cafe-el-manzah");
@@ -204,7 +210,9 @@ describe("Faza backoffice", () => {
       expect(created.status).toBe(201);
       const categoryId = (created.body.data as AdminCategoryDto).id;
 
-      const list = await request(app).get("/api/v1/admin/my-coffee/categories").set(...bearer(token));
+      const list = await request(app)
+        .get("/api/v1/admin/my-coffee/categories")
+        .set(...bearer(token));
       expect(list.status).toBe(200);
       expect((list.body.data as AdminCategoryDto[]).map((category) => category.name)).toContain("Snacks");
 
@@ -237,7 +245,12 @@ describe("Faza backoffice", () => {
       const created = await request(app)
         .post(`/api/v1/admin/my-coffee/categories/${categoryId}/items`)
         .set(...bearer(token))
-        .send({ name: "Fruit Smoothie", description: "Mango and banana", price: 5.5, image: "https://example.com/smoothie.png" });
+        .send({
+          name: "Fruit Smoothie",
+          description: "Mango and banana",
+          price: 5.5,
+          image: "https://example.com/smoothie.png",
+        });
       expect(created.status).toBe(201);
       const itemId = (created.body.data as AdminItemDto).id;
 
@@ -326,7 +339,9 @@ describe("Faza backoffice", () => {
 
     it("12. validates item ownership server-side", async () => {
       const tokenA = await coffeeToken("cafe-el-manzah");
-      const brewItems = await request(app).get(`/api/v1/categories/${await categoryOf("brew-and-beans", "Cafés")}/items`);
+      const brewItems = await request(app).get(
+        `/api/v1/categories/${await categoryOf("brew-and-beans", "Cafés")}/items`,
+      );
       const brewItemId = (brewItems.body.data as ItemDtoLike[]).find((item) => item.name === "Espresso")!.id;
 
       const response = await request(app)
@@ -358,7 +373,9 @@ describe("Faza backoffice", () => {
     it("7. can list, update and delete every coffee", async () => {
       const token = await appToken();
 
-      const list = await request(app).get("/api/v1/admin/coffees").set(...bearer(token));
+      const list = await request(app)
+        .get("/api/v1/admin/coffees")
+        .set(...bearer(token));
       expect(list.status).toBe(200);
       const coffees = list.body.data as AdminCoffeeDto[];
       expect(coffees.map((coffee) => coffee.slug)).toEqual(
@@ -487,8 +504,12 @@ describe("Faza backoffice", () => {
         .set(...bearer(token))
         .send({ name: "Zéro Café", logo: "https://example.com/zero.png", slug: "zero-cafe" });
 
-      const get = await request(app).get(`/api/v1/admin/coffees/${manzahId}`).set(...bearer(token));
-      const getListed = await request(app).get("/api/v1/admin/coffees").set(...bearer(token));
+      const get = await request(app)
+        .get(`/api/v1/admin/coffees/${manzahId}`)
+        .set(...bearer(token));
+      const getListed = await request(app)
+        .get("/api/v1/admin/coffees")
+        .set(...bearer(token));
       const myCoffee = await request(app)
         .get("/api/v1/admin/my-coffee")
         .set(...bearer(await coffeeToken("cafe-el-manzah")));

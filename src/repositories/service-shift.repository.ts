@@ -33,7 +33,9 @@ export async function listServiceShifts(coffeeId: string, status?: ServiceShiftS
             $sum: { $cond: [{ $and: [{ $eq: ["$status", "CONFIRMED"] }, { $eq: ["$paymentStatus", "PAID"] }] }, 1, 0] },
           },
           paidRevenue: {
-            $sum: { $cond: [{ $and: [{ $eq: ["$status", "CONFIRMED"] }, { $eq: ["$paymentStatus", "PAID"] }] }, "$total", 0] },
+            $sum: {
+              $cond: [{ $and: [{ $eq: ["$status", "CONFIRMED"] }, { $eq: ["$paymentStatus", "PAID"] }] }, "$total", 0],
+            },
           },
           itemsSold: {
             $sum: {
@@ -87,7 +89,9 @@ export async function closeServiceShift(coffeeId: string, shiftId: string, close
     { _id: shiftId, coffeeId, status: "OPEN" },
     { $set: { status: "CLOSED", closedAt: new Date(), closedByRole } },
     { returnDocument: "after", runValidators: true },
-  ).lean().exec();
+  )
+    .lean()
+    .exec();
 }
 
 export async function getServiceShiftSummary(coffeeId: string, shiftId: string) {
@@ -109,28 +113,39 @@ export async function getServiceShiftSummary(coffeeId: string, shiftId: string) 
           { $match: { status: "CONFIRMED", paymentStatus: { $ne: "PAID" } } },
           { $group: { _id: null, revenue: { $sum: "$total" }, orders: { $sum: 1 } } },
         ],
-        pending: [
-          { $match: { status: "PENDING" } },
-          { $group: { _id: null, revenue: { $sum: "$total" } } },
-        ],
+        pending: [{ $match: { status: "PENDING" } }, { $group: { _id: null, revenue: { $sum: "$total" } } }],
         confirmedItems: [
           { $match: { status: "CONFIRMED" } },
           { $unwind: "$items" },
           { $group: { _id: null, itemsSold: { $sum: "$items.quantity" } } },
         ],
         tables: [
-          { $group: { _id: "$tableNumber", orders: { $sum: 1 }, revenue: { $sum: { $cond: [{ $eq: ["$status", "CONFIRMED"] }, "$total", 0] } } } },
+          {
+            $group: {
+              _id: "$tableNumber",
+              orders: { $sum: 1 },
+              revenue: { $sum: { $cond: [{ $eq: ["$status", "CONFIRMED"] }, "$total", 0] } },
+            },
+          },
           { $sort: { orders: -1, revenue: -1 } },
         ],
         sessions: [
-          { $group: { _id: "$tableSessionId", orders: { $sum: 1 }, revenue: { $sum: { $cond: [{ $eq: ["$status", "CONFIRMED"] }, "$total", 0] } } } },
+          {
+            $group: {
+              _id: "$tableSessionId",
+              orders: { $sum: 1 },
+              revenue: { $sum: { $cond: [{ $eq: ["$status", "CONFIRMED"] }, "$total", 0] } },
+            },
+          },
           { $sort: { orders: -1 } },
         ],
       },
     },
   ]).exec();
   if (!summary) return null;
-  const counts = new Map<string, number>((summary.statuses ?? []).map((row: { _id: string; count: number }) => [row._id, row.count]));
+  const counts = new Map<string, number>(
+    (summary.statuses ?? []).map((row: { _id: string; count: number }) => [row._id, row.count]),
+  );
   const confirmed = summary.confirmed?.[0] ?? {};
   const paid = summary.paid?.[0] ?? {};
   const outstanding = summary.outstanding?.[0] ?? {};
@@ -147,10 +162,20 @@ export async function getServiceShiftSummary(coffeeId: string, shiftId: string) 
     paidRevenue: Number(paid.revenue ?? 0),
     outstandingRevenue: Number(outstanding.revenue ?? 0),
     unpaidConfirmedOrders: Number(outstanding.orders ?? 0),
-    averageConfirmedOrderValue: counts.get("CONFIRMED") ? Number(confirmed.revenue ?? 0) / (counts.get("CONFIRMED") ?? 1) : 0,
+    averageConfirmedOrderValue: counts.get("CONFIRMED")
+      ? Number(confirmed.revenue ?? 0) / (counts.get("CONFIRMED") ?? 1)
+      : 0,
     itemsSold: Number(confirmedItems.itemsSold ?? 0),
     tablesServed: (summary.tables ?? []).length,
-    tables: (summary.tables ?? []).map((row: { _id: number; orders: number; revenue: number }) => ({ tableNumber: row._id, orders: row.orders, revenue: row.revenue })),
-    sessions: (summary.sessions ?? []).map((row: { _id: Types.ObjectId | null; orders: number; revenue: number }) => ({ tableSessionId: row._id?.toString() ?? null, orders: row.orders, revenue: row.revenue })),
+    tables: (summary.tables ?? []).map((row: { _id: number; orders: number; revenue: number }) => ({
+      tableNumber: row._id,
+      orders: row.orders,
+      revenue: row.revenue,
+    })),
+    sessions: (summary.sessions ?? []).map((row: { _id: Types.ObjectId | null; orders: number; revenue: number }) => ({
+      tableSessionId: row._id?.toString() ?? null,
+      orders: row.orders,
+      revenue: row.revenue,
+    })),
   };
 }

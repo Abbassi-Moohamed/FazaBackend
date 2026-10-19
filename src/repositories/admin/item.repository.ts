@@ -84,10 +84,7 @@ export async function listItemsOfCategory(categoryId: string): Promise<AdminItem
   return items.map(toRow);
 }
 
-export async function createItemForCategory(
-  categoryId: string,
-  input: AdminItemCreateInput,
-): Promise<AdminItemRow> {
+export async function createItemForCategory(categoryId: string, input: AdminItemCreateInput): Promise<AdminItemRow> {
   const item = await ItemModel.create({ ...input, itemCategoryId: categoryId });
   return toRow(item);
 }
@@ -97,19 +94,13 @@ export async function createItemForCategory(
  * The two-step lookup walks item → itemCategory → coffee, failing closed when
  * any hop is missing or mismatched.
  */
-export async function findItemOwnedByCoffee(
-  coffeeId: string,
-  itemId: string,
-): Promise<AdminItemRow | null> {
+export async function findItemOwnedByCoffee(coffeeId: string, itemId: string): Promise<AdminItemRow | null> {
   if (!Types.ObjectId.isValid(coffeeId) || !Types.ObjectId.isValid(itemId)) return null;
 
   const item = await ItemModel.findById(itemId).select(SAFE_FIELDS).lean().exec();
   if (!item) return null;
 
-  const category = await ItemCategoryModel.findById(item.itemCategoryId)
-    .select({ coffeeId: 1 })
-    .lean()
-    .exec();
+  const category = await ItemCategoryModel.findById(item.itemCategoryId).select({ coffeeId: 1 }).lean().exec();
   if (!category || category.coffeeId.toString() !== coffeeId) return null;
 
   return toRow(item);

@@ -8,10 +8,7 @@ async function main(): Promise<void> {
 
   const app = createApp();
   const server = app.listen(env.PORT, env.HOST, () => {
-    logger.info(
-      { host: env.HOST, port: env.PORT, env: env.nodeEnv, origin: env.FRONTEND_URL },
-      "Faza API listening",
-    );
+    logger.info({ host: env.HOST, port: env.PORT, env: env.nodeEnv, origin: env.FRONTEND_URL }, "Faza API listening");
   });
 
   let shuttingDown = false;

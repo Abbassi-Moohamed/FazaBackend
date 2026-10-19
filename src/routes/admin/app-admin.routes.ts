@@ -28,7 +28,19 @@ appAdminCoffeesRouter.use(requireAdmin, requireAppAdmin);
 appAdminCoffeesRouter.get("/", listAdminCoffeesController);
 appAdminCoffeesRouter.post("/", validate({ body: createCoffeeBodySchema }), createAdminCoffeeController);
 appAdminCoffeesRouter.get("/:coffeeId", validate({ params: coffeeIdParamsSchema }), getAdminCoffeeController);
-appAdminCoffeesRouter.get("/:coffeeId/insights", validate({ params: coffeeIdParamsSchema, query: insightsQuerySchema }), getAdminCoffeeInsightsController);
-appAdminCoffeesRouter.patch("/:coffeeId", validate({ params: coffeeIdParamsSchema, body: updateCoffeeBodySchema }), updateAdminCoffeeController);
-appAdminCoffeesRouter.patch("/:coffeeId/pin", validate({ params: coffeeIdParamsSchema }), resetAdminCoffeePinController);
+appAdminCoffeesRouter.get(
+  "/:coffeeId/insights",
+  validate({ params: coffeeIdParamsSchema, query: insightsQuerySchema }),
+  getAdminCoffeeInsightsController,
+);
+appAdminCoffeesRouter.patch(
+  "/:coffeeId",
+  validate({ params: coffeeIdParamsSchema, body: updateCoffeeBodySchema }),
+  updateAdminCoffeeController,
+);
+appAdminCoffeesRouter.patch(
+  "/:coffeeId/pin",
+  validate({ params: coffeeIdParamsSchema }),
+  resetAdminCoffeePinController,
+);
 appAdminCoffeesRouter.delete("/:coffeeId", validate({ params: coffeeIdParamsSchema }), deleteAdminCoffeeController);

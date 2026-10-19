@@ -7,6 +7,9 @@ migrations.push({
     await db.collection("orders").createIndex({ coffeeId: 1, status: 1, createdAt: -1 });
   },
   async down({ db }) {
-    await db.collection("orders").dropIndexes().catch(() => undefined);
+    await db
+      .collection("orders")
+      .dropIndexes()
+      .catch(() => undefined);
   },
 });

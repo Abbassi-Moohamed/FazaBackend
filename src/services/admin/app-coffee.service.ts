@@ -128,7 +128,14 @@ export async function updateCoffee(coffeeId: string, input: CoffeeUpdateInput): 
   }
 
   const admin: AdminContext = { role: "APP_ADMIN" };
-  const patch: Partial<{ name: string; logo: string; slug: string; logoImageId: string | null; cover: string | null; coverImageId: string | null }> = {};
+  const patch: Partial<{
+    name: string;
+    logo: string;
+    slug: string;
+    logoImageId: string | null;
+    cover: string | null;
+    coverImageId: string | null;
+  }> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.logo !== undefined) {
     const resolved = await resolveImageForEntity({ url: input.logo, admin });
@@ -150,7 +157,11 @@ export async function updateCoffee(coffeeId: string, input: CoffeeUpdateInput): 
     await deleteImage(existing.logoImageId, { coffeeId });
   }
   if (patch.coverImageId) await attachImageToEntity(patch.coverImageId, coffeeId);
-  if (patch.coverImageId !== undefined && existing.coverImageId !== null && existing.coverImageId !== patch.coverImageId) {
+  if (
+    patch.coverImageId !== undefined &&
+    existing.coverImageId !== null &&
+    existing.coverImageId !== patch.coverImageId
+  ) {
     await deleteImage(existing.coverImageId, { coffeeId });
   }
 
@@ -168,11 +179,7 @@ export async function deleteCoffee(coffeeId: string): Promise<{ id: string }> {
   const deleted = await deleteCoffeeWithDependencies(coffeeId);
   if (!deleted) throw new ApiError(404, "Coffee not found");
 
-  const allImageIds = [
-    ...(existing.logoImageId ? [existing.logoImageId] : []),
-    ...itemImageIds,
-    ...categoryImageIds,
-  ];
+  const allImageIds = [...(existing.logoImageId ? [existing.logoImageId] : []), ...itemImageIds, ...categoryImageIds];
   for (const imageId of new Set(allImageIds)) {
     await deleteImage(imageId, { coffeeId });
   }

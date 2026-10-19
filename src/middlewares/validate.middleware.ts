@@ -30,10 +30,7 @@ export function validate(schemas: ValidateSchemas) {
       body: req.body,
     };
 
-    for (const [location, schema] of Object.entries(schemas) as [
-      keyof ValidateSchemas,
-      ZodType,
-    ][]) {
+    for (const [location, schema] of Object.entries(schemas) as [keyof ValidateSchemas, ZodType][]) {
       if (!schema) continue;
 
       const result = schema.safeParse(targets[location]);

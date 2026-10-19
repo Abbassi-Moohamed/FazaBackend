@@ -1,9 +1,5 @@
 import type { Request, Response } from "express";
-import {
-  changeMyPin,
-  getMyCoffee,
-  updateMyCoffee,
-} from "../../../services/admin/coffee-admin.service.js";
+import { changeMyPin, getMyCoffee, updateMyCoffee } from "../../../services/admin/coffee-admin.service.js";
 import { sendSuccess } from "../../../utils/http.js";
 
 function adminCoffeeId(req: Request): string {

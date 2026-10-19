@@ -19,7 +19,12 @@ export async function getCurrentShiftController(req: Request, res: Response): Pr
 }
 
 export async function openShiftController(req: Request, res: Response): Promise<void> {
-  const body = req.validated!.body as { name?: string; type?: "MORNING" | "AFTERNOON" | "CUSTOM"; label?: string; notes?: string };
+  const body = req.validated!.body as {
+    name?: string;
+    type?: "MORNING" | "AFTERNOON" | "CUSTOM";
+    label?: string;
+    notes?: string;
+  };
   sendSuccess(res, await openServiceShift(coffeeId(req), body), 201);
 }
 
@@ -43,14 +48,19 @@ export async function closeCurrentShiftController(req: Request, res: Response): 
 }
 
 export async function listTableSessionsController(req: Request, res: Response): Promise<void> {
-  const query = (req.validated?.query as { serviceShiftId?: string; status?: "ACTIVE" | "CLOSED"; page?: number; limit?: number } | undefined) ?? {};
+  const query =
+    (req.validated?.query as
+      { serviceShiftId?: string; status?: "ACTIVE" | "CLOSED"; page?: number; limit?: number } | undefined) ?? {};
   const params = req.validated?.params as { shiftId?: string } | undefined;
-  sendSuccess(res, await getCoffeeTableSessions(coffeeId(req), {
-    ...query,
-    page: query.page ?? 1,
-    limit: query.limit ?? 50,
-    serviceShiftId: params?.shiftId ?? query.serviceShiftId,
-  }));
+  sendSuccess(
+    res,
+    await getCoffeeTableSessions(coffeeId(req), {
+      ...query,
+      page: query.page ?? 1,
+      limit: query.limit ?? 50,
+      serviceShiftId: params?.shiftId ?? query.serviceShiftId,
+    }),
+  );
 }
 
 export async function getTableSessionController(req: Request, res: Response): Promise<void> {

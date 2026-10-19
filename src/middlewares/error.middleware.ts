@@ -40,12 +40,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       // Mongoose document validation (future-admin writes).
       statusCode = 400;
       message = "Validation failed";
-      details = Object.values((record as { errors?: Record<string, unknown> }).errors ?? {}).map(
-        (entry) => {
-          const e = asRecord(entry);
-          return { field: String(e?.path ?? "unknown"), message: String(e?.message ?? "Invalid value") };
-        },
-      );
+      details = Object.values((record as { errors?: Record<string, unknown> }).errors ?? {}).map((entry) => {
+        const e = asRecord(entry);
+        return { field: String(e?.path ?? "unknown"), message: String(e?.message ?? "Invalid value") };
+      });
     } else if (record?.code === 11000) {
       // MongoDB duplicate key.
       statusCode = 409;

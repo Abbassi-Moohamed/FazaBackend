@@ -21,7 +21,9 @@ export async function findActiveTableSession(coffeeId: string, tableNumber: numb
 }
 
 export async function findTableSessionByToken(token: string) {
-  return TableSessionModel.findOne({ sessionTokenHash: hashSessionToken(token) }).select("+sessionTokenHash").exec();
+  return TableSessionModel.findOne({ sessionTokenHash: hashSessionToken(token) })
+    .select("+sessionTokenHash")
+    .exec();
 }
 
 export async function createTableSession(input: {
@@ -61,7 +63,9 @@ export async function closeTableSession(coffeeId: string, sessionId: string, clo
     { _id: sessionId, coffeeId, status: "ACTIVE" },
     { $set: { status: "CLOSED", closedAt } },
     { returnDocument: "after", runValidators: true },
-  ).lean().exec();
+  )
+    .lean()
+    .exec();
 }
 
 export async function listTableSessions(
@@ -70,7 +74,8 @@ export async function listTableSessions(
 ) {
   if (!Types.ObjectId.isValid(coffeeId)) return { sessions: [], total: 0 };
   const filter: Record<string, unknown> = { coffeeId: new Types.ObjectId(coffeeId) };
-  if (options.serviceShiftId && Types.ObjectId.isValid(options.serviceShiftId)) filter.serviceShiftId = new Types.ObjectId(options.serviceShiftId);
+  if (options.serviceShiftId && Types.ObjectId.isValid(options.serviceShiftId))
+    filter.serviceShiftId = new Types.ObjectId(options.serviceShiftId);
   if (options.status) filter.status = options.status;
   const skip = options.skip ?? 0;
   const limit = options.limit ?? 50;
@@ -86,7 +91,13 @@ export async function listTableSessions(
           let: { sessionId: "$_id" },
           pipeline: [
             { $match: { $expr: { $eq: ["$tableSessionId", "$$sessionId"] } } },
-            { $group: { _id: { status: "$status", paymentStatus: "$paymentStatus" }, count: { $sum: 1 }, revenue: { $sum: "$total" } } },
+            {
+              $group: {
+                _id: { status: "$status", paymentStatus: "$paymentStatus" },
+                count: { $sum: 1 },
+                revenue: { $sum: "$total" },
+              },
+            },
           ],
           as: "orderSummary",
         },
@@ -122,8 +133,12 @@ export async function getTableSessionSummary(coffeeId: string, sessionId: string
         lastOrderAt: 1,
         orderCount: 1,
         totalOrders: { $size: "$orders" },
-        confirmedOrders: { $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "CONFIRMED"] } } } },
-        pendingOrders: { $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "PENDING"] } } } },
+        confirmedOrders: {
+          $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "CONFIRMED"] } } },
+        },
+        pendingOrders: {
+          $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "PENDING"] } } },
+        },
         pendingRevenue: {
           $sum: {
             $map: {
@@ -133,7 +148,9 @@ export async function getTableSessionSummary(coffeeId: string, sessionId: string
             },
           },
         },
-        rejectedOrders: { $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "REJECTED"] } } } },
+        rejectedOrders: {
+          $size: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.status", "REJECTED"] } } },
+        },
         confirmedRevenue: {
           $sum: {
             $map: {
@@ -146,7 +163,15 @@ export async function getTableSessionSummary(coffeeId: string, sessionId: string
         paidRevenue: {
           $sum: {
             $map: {
-              input: { $filter: { input: "$orders", as: "order", cond: { $and: [{ $eq: ["$$order.status", "CONFIRMED"] }, { $eq: ["$$order.paymentStatus", "PAID"] }] } } },
+              input: {
+                $filter: {
+                  input: "$orders",
+                  as: "order",
+                  cond: {
+                    $and: [{ $eq: ["$$order.status", "CONFIRMED"] }, { $eq: ["$$order.paymentStatus", "PAID"] }],
+                  },
+                },
+              },
               as: "order",
               in: "$$order.total",
             },
@@ -155,7 +180,15 @@ export async function getTableSessionSummary(coffeeId: string, sessionId: string
         outstandingRevenue: {
           $sum: {
             $map: {
-              input: { $filter: { input: "$orders", as: "order", cond: { $and: [{ $eq: ["$$order.status", "CONFIRMED"] }, { $ne: ["$$order.paymentStatus", "PAID"] }] } } },
+              input: {
+                $filter: {
+                  input: "$orders",
+                  as: "order",
+                  cond: {
+                    $and: [{ $eq: ["$$order.status", "CONFIRMED"] }, { $ne: ["$$order.paymentStatus", "PAID"] }],
+                  },
+                },
+              },
               as: "order",
               in: "$$order.total",
             },

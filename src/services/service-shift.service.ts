@@ -1,5 +1,9 @@
 import { Types } from "mongoose";
-import { closeTableSession, getTableSessionSummary, listTableSessions } from "../repositories/table-session.repository.js";
+import {
+  closeTableSession,
+  getTableSessionSummary,
+  listTableSessions,
+} from "../repositories/table-session.repository.js";
 import {
   closeServiceShift,
   createServiceShift,
@@ -8,10 +12,52 @@ import {
   getServiceShiftSummary,
   listServiceShifts,
 } from "../repositories/service-shift.repository.js";
+import type { ServiceShiftStatus, ServiceShiftType } from "../models/service-shift.model.js";
+import type { TableSessionStatus } from "../models/table-session.model.js";
 import type { ServiceShiftDto, TableSessionDto } from "../types/service-shift.js";
 import { ApiError } from "../utils/ApiError.js";
 
-function shiftDto(shift: any, summary?: unknown): ServiceShiftDto {
+interface ServiceShiftDoc {
+  _id: Types.ObjectId;
+  coffeeId: Types.ObjectId;
+  status: ServiceShiftStatus;
+  name?: string | null;
+  type?: ServiceShiftType;
+  label?: string | null;
+  notes?: string | null;
+  openedAt: Date;
+  closedAt?: Date | null;
+}
+
+interface TableSessionDoc {
+  _id: Types.ObjectId;
+  coffeeId: Types.ObjectId;
+  tableNumber: number;
+  serviceShiftId?: Types.ObjectId | null;
+  status: TableSessionStatus;
+  openedAt: Date;
+  closedAt?: Date | null;
+  lastOrderAt: Date;
+  orderCount: number;
+}
+
+interface SessionOrderRow {
+  _id: Types.ObjectId;
+  tableNumber: number;
+  status: string;
+  paymentStatus?: string;
+  total: number;
+}
+
+interface TableSessionSummaryDoc extends TableSessionDoc {
+  orders?: SessionOrderRow[];
+}
+
+interface TableSessionListRow extends TableSessionDoc {
+  orderSummary?: Array<{ _id?: { status?: string }; count?: number; revenue?: number }>;
+}
+
+function shiftDto(shift: ServiceShiftDoc, summary?: unknown): ServiceShiftDto {
   return {
     id: shift._id.toString(),
     coffeeId: shift.coffeeId.toString(),
@@ -26,7 +72,7 @@ function shiftDto(shift: any, summary?: unknown): ServiceShiftDto {
   };
 }
 
-function sessionDto(session: any, summary?: unknown): TableSessionDto {
+function sessionDto(session: TableSessionDoc, summary?: unknown): TableSessionDto {
   return {
     id: session._id.toString(),
     coffeeId: session.coffeeId.toString(),
@@ -41,7 +87,7 @@ function sessionDto(session: any, summary?: unknown): TableSessionDto {
   };
 }
 
-function paymentOrderDto(order: any) {
+function paymentOrderDto(order: SessionOrderRow) {
   return {
     id: order._id.toString(),
     tableNumber: order.tableNumber,
@@ -51,7 +97,7 @@ function paymentOrderDto(order: any) {
   };
 }
 
-function sessionSummaryDto(summary: any) {
+function sessionSummaryDto(summary: TableSessionSummaryDoc | null) {
   if (!summary) return summary;
   return {
     ...summary,
@@ -64,7 +110,10 @@ export async function getCurrentServiceShift(coffeeId: string): Promise<ServiceS
   return shift ? shiftDto(shift, await getServiceShiftSummary(coffeeId, shift._id.toString())) : null;
 }
 
-export async function openServiceShift(coffeeId: string, input: { name?: string; type?: "MORNING" | "AFTERNOON" | "CUSTOM"; label?: string; notes?: string }): Promise<ServiceShiftDto> {
+export async function openServiceShift(
+  coffeeId: string,
+  input: { name?: string; type?: "MORNING" | "AFTERNOON" | "CUSTOM"; label?: string; notes?: string },
+): Promise<ServiceShiftDto> {
   const current = await findCurrentServiceShift(coffeeId);
   if (current) throw new ApiError(409, "A service shift is already open.");
   try {
@@ -117,15 +166,15 @@ export async function finishServiceShift(coffeeId: string, shiftId: string): Pro
   if (openTables.total > 0) {
     throw new ApiError(409, "Some tables must be closed before closing the service.", {
       code: "OPEN_TABLES_REMAIN",
-      tables: openTables.sessions.map((table: any) => {
+      tables: (openTables.sessions as TableSessionListRow[]).map((table) => {
         const orderSummary = Array.isArray(table.orderSummary) ? table.orderSummary : [];
         return {
           id: table._id.toString(),
           tableNumber: table.tableNumber,
-          orders: orderSummary.reduce((total: number, row: any) => total + Number(row.count ?? 0), 0),
+          orders: orderSummary.reduce((total, row) => total + Number(row.count ?? 0), 0),
           revenue: orderSummary
-            .filter((row: any) => row._id?.status === "CONFIRMED")
-            .reduce((total: number, row: any) => total + Number(row.revenue ?? 0), 0),
+            .filter((row) => row._id?.status === "CONFIRMED")
+            .reduce((total, row) => total + Number(row.revenue ?? 0), 0),
         };
       }),
     });
@@ -166,14 +215,9 @@ export async function finishTableSession(coffeeId: string, sessionId: string): P
   if (current.status !== "ACTIVE") {
     return sessionDto(current, sessionSummaryDto(current));
   }
-  const unpaidOrders = Array.isArray((current as { orders?: unknown[] }).orders)
-    ? (current as { orders: any[] }).orders.filter(
-        (order) => order.status === "CONFIRMED" && order.paymentStatus !== "PAID",
-      )
-    : [];
-  const pendingOrders = Array.isArray((current as { orders?: unknown[] }).orders)
-    ? (current as { orders: any[] }).orders.filter((order) => order.status === "PENDING")
-    : [];
+  const orders = Array.isArray(current.orders) ? (current.orders as SessionOrderRow[]) : [];
+  const unpaidOrders = orders.filter((order) => order.status === "CONFIRMED" && order.paymentStatus !== "PAID");
+  const pendingOrders = orders.filter((order) => order.status === "PENDING");
   if (pendingOrders.length > 0) {
     throw new ApiError(409, "Table has pending orders.", {
       code: "TABLE_PENDING_ORDERS",

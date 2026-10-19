@@ -8,9 +8,7 @@ import { MONGODB_ID_MESSAGE, MONGODB_ID_PATTERN } from "./category.validators.js
  * conventions. Every value is validated before it can reach a service.
  */
 
-export const pinSchema = z
-  .string()
-  .regex(/^\d{4}$/, "PIN must be exactly 4 digits.");
+export const pinSchema = z.string().regex(/^\d{4}$/, "PIN must be exactly 4 digits.");
 
 export const coffeeSlugSchema = z
   .string()
@@ -52,7 +50,12 @@ export const createCoffeeBodySchema = z.object({
 });
 
 const updateCoffeeFields = z.object({
-  name: z.string().trim().min(1, "Coffee name is required.").max(120, "Coffee name must be at most 120 characters.").optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Coffee name is required.")
+    .max(120, "Coffee name must be at most 120 characters.")
+    .optional(),
   logo: z.url("logo must be a valid URL.").optional(),
   cover: z.url("cover must be a valid URL.").optional(),
   slug: coffeeSlugSchema.optional(),
@@ -68,21 +71,34 @@ export const categoryBodySchema = z.object({
   image: z.url("image must be a valid URL.").optional(),
 });
 
-export const itemBodySchema = z.object({
-  name: z.string().trim().min(1, "Item name is required.").max(120, "Item name must be at most 120 characters."),
-  description: z.string().trim().max(500, "Item description must be at most 500 characters.").optional(),
-  price: z.number().finite().positive("Item price must be greater than zero."),
-  promotion: z.number().finite().positive("Promotional price must be greater than zero.").nullable().optional().default(null),
-  isAvailable: z.boolean().optional().default(true),
-  image: z.url("image must be a valid URL.").optional(),
-}).refine((value) => value.promotion === null || value.promotion < value.price, {
-  message: "Promotional price must be lower than the regular price.",
-  path: ["promotion"],
-});
+export const itemBodySchema = z
+  .object({
+    name: z.string().trim().min(1, "Item name is required.").max(120, "Item name must be at most 120 characters."),
+    description: z.string().trim().max(500, "Item description must be at most 500 characters.").optional(),
+    price: z.number().finite().positive("Item price must be greater than zero."),
+    promotion: z
+      .number()
+      .finite()
+      .positive("Promotional price must be greater than zero.")
+      .nullable()
+      .optional()
+      .default(null),
+    isAvailable: z.boolean().optional().default(true),
+    image: z.url("image must be a valid URL.").optional(),
+  })
+  .refine((value) => value.promotion === null || value.promotion < value.price, {
+    message: "Promotional price must be lower than the regular price.",
+    path: ["promotion"],
+  });
 
 export const updateItemBodySchema = z
   .object({
-    name: z.string().trim().min(1, "Item name is required.").max(120, "Item name must be at most 120 characters.").optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, "Item name is required.")
+      .max(120, "Item name must be at most 120 characters.")
+      .optional(),
     description: z.string().trim().max(500, "Item description must be at most 500 characters.").optional(),
     price: z.number().finite().positive("Item price must be greater than zero.").optional(),
     promotion: z.number().finite().positive("Promotional price must be greater than zero.").nullable().optional(),
@@ -92,10 +108,17 @@ export const updateItemBodySchema = z
   .refine((value) => Object.keys(value).length >= 1, {
     message: "Provide at least one field to update.",
   })
-  .refine((value) => value.promotion === undefined || value.promotion === null || value.price === undefined || value.promotion < value.price, {
-    message: "Promotional price must be lower than the regular price.",
-    path: ["promotion"],
-  });
+  .refine(
+    (value) =>
+      value.promotion === undefined ||
+      value.promotion === null ||
+      value.price === undefined ||
+      value.promotion < value.price,
+    {
+      message: "Promotional price must be lower than the regular price.",
+      path: ["promotion"],
+    },
+  );
 
 export const changePinBodySchema = z
   .object({
@@ -120,14 +143,23 @@ export const insightsQuerySchema = z
     endDate: value.endDate ?? value.to,
     serviceShiftId: value.serviceShiftId ?? value.shiftId,
   }))
-  .refine((value) => (!value.startDate || !Number.isNaN(new Date(value.startDate).getTime())) && (!value.endDate || !Number.isNaN(new Date(value.endDate).getTime())), {
-    message: "Dates must be valid ISO dates.",
-    path: ["startDate"],
-  })
-  .refine((value) => !value.startDate || !value.endDate || new Date(value.startDate).getTime() <= new Date(value.endDate).getTime(), {
-    message: "startDate must be before or equal to endDate.",
-    path: ["startDate"],
-  });
+  .refine(
+    (value) =>
+      (!value.startDate || !Number.isNaN(new Date(value.startDate).getTime())) &&
+      (!value.endDate || !Number.isNaN(new Date(value.endDate).getTime())),
+    {
+      message: "Dates must be valid ISO dates.",
+      path: ["startDate"],
+    },
+  )
+  .refine(
+    (value) =>
+      !value.startDate || !value.endDate || new Date(value.startDate).getTime() <= new Date(value.endDate).getTime(),
+    {
+      message: "startDate must be before or equal to endDate.",
+      path: ["startDate"],
+    },
+  );
 
 export const serviceShiftIdParamsSchema = z.object({
   shiftId: z.string().regex(MONGODB_ID_PATTERN, MONGODB_ID_MESSAGE),

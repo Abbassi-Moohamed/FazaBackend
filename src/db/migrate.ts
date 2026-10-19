@@ -27,9 +27,12 @@ export async function runMigrations(): Promise<string[]> {
   const db = client.db();
   const changelog = db.collection("_migrations");
   const appliedNames = new Set(
-    (await changelog.find({ name: { $exists: true } }).project({ name: 1 }).toArray()).map(
-      (doc) => doc.name as string,
-    ),
+    (
+      await changelog
+        .find({ name: { $exists: true } })
+        .project({ name: 1 })
+        .toArray()
+    ).map((doc) => doc.name as string),
   );
 
   const executed: string[] = [];

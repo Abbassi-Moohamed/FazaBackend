@@ -5,8 +5,4 @@ import { coffeeSlugSchema } from "../../validators/coffee.validators.js";
 
 export const coffeeRouter = Router();
 
-coffeeRouter.get(
-  "/coffees/:coffeeSlug",
-  validate({ params: coffeeSlugSchema }),
-  getCoffeeBySlugController,
-);
+coffeeRouter.get("/coffees/:coffeeSlug", validate({ params: coffeeSlugSchema }), getCoffeeBySlugController);

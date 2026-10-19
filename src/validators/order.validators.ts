@@ -7,7 +7,10 @@ const objectId = z.string().regex(MONGODB_ID_PATTERN, MONGODB_ID_MESSAGE);
 export const createOrderBodySchema = z.object({
   coffeeSlug: z.string().trim().toLowerCase().min(1).max(80),
   tableNumber: z.coerce.number().int().min(1).max(10000),
-  items: z.array(z.object({ itemId: objectId, quantity: z.number().int().min(1).max(99) })).min(1).max(50),
+  items: z
+    .array(z.object({ itemId: objectId, quantity: z.number().int().min(1).max(99) }))
+    .min(1)
+    .max(50),
   sessionToken: z.string().trim().min(20).max(256).optional(),
 });
 

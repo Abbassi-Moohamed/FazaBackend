@@ -154,7 +154,14 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
   if (!existing) throw new ApiError(404, "Coffee not found");
 
   const admin: AdminContext = { role: "COFFEE_ADMIN", coffeeId };
-  const patch: Partial<{ name: string; logo: string; slug: string; logoImageId: string | null; cover: string | null; coverImageId: string | null }> = {};
+  const patch: Partial<{
+    name: string;
+    logo: string;
+    slug: string;
+    logoImageId: string | null;
+    cover: string | null;
+    coverImageId: string | null;
+  }> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.logo !== undefined) {
     const resolved = await resolveImageForEntity({ url: input.logo, admin });
@@ -176,7 +183,11 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
     await deleteImage(existing.logoImageId, { coffeeId });
   }
   if (patch.coverImageId) await attachImageToEntity(patch.coverImageId, coffeeId);
-  if (patch.coverImageId !== undefined && existing.coverImageId !== null && existing.coverImageId !== patch.coverImageId) {
+  if (
+    patch.coverImageId !== undefined &&
+    existing.coverImageId !== null &&
+    existing.coverImageId !== patch.coverImageId
+  ) {
     await deleteImage(existing.coverImageId, { coffeeId });
   }
 
@@ -192,16 +203,14 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
   });
 }
 
-export async function changeMyPin(
-  coffeeId: string,
-  currentPin: string,
-  newPin: string,
-): Promise<{ id: string }> {
+export async function changeMyPin(coffeeId: string, currentPin: string, newPin: string): Promise<{ id: string }> {
   const coffee = await findCoffeeWithPinHashById(coffeeId);
   if (!coffee) throw new ApiError(404, "Coffee not found");
 
   const valid =
-    coffee.adminPinHash !== undefined && coffee.adminPinHash !== null && (await verifyPin(currentPin, coffee.adminPinHash));
+    coffee.adminPinHash !== undefined &&
+    coffee.adminPinHash !== null &&
+    (await verifyPin(currentPin, coffee.adminPinHash));
   if (!valid) throw new ApiError(401, "Invalid current PIN");
 
   const adminPinHash = await hashPin(newPin);
@@ -287,11 +296,7 @@ export async function listItems(coffeeId: string, categoryId: string): Promise<A
   return items.map(itemToDto);
 }
 
-export async function createItem(
-  coffeeId: string,
-  categoryId: string,
-  input: CreateItemInput,
-): Promise<AdminItemDto> {
+export async function createItem(coffeeId: string, categoryId: string, input: CreateItemInput): Promise<AdminItemDto> {
   const category = await findCategoryOwnedByCoffee(coffeeId, categoryId);
   if (!category) throw new ApiError(404, "Category not found");
   validateItemPricing(input.price, input.promotion ?? null);
@@ -319,14 +324,13 @@ export async function createItem(
   return itemToDto(item);
 }
 
-export async function updateItem(
-  coffeeId: string,
-  itemId: string,
-  input: UpdateItemInput,
-): Promise<AdminItemDto> {
+export async function updateItem(coffeeId: string, itemId: string, input: UpdateItemInput): Promise<AdminItemDto> {
   const existing = await findItemOwnedByCoffee(coffeeId, itemId);
   if (!existing) throw new ApiError(404, "Item not found");
-  validateItemPricing(input.price ?? existing.price, input.promotion !== undefined ? input.promotion : existing.promotion);
+  validateItemPricing(
+    input.price ?? existing.price,
+    input.promotion !== undefined ? input.promotion : existing.promotion,
+  );
 
   const admin: AdminContext = { role: "COFFEE_ADMIN", coffeeId };
   const patch: UpdateItemInput = {};

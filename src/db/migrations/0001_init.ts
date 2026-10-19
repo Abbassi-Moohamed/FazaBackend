@@ -50,10 +50,9 @@ migrations.push({
     });
 
     await db.collection("coffees").createIndex({ slug: 1 }, { unique: true, name: "uq_coffees_slug" });
-    await db.collection("itemcategories").createIndex(
-      { coffeeId: 1, name: 1 },
-      { unique: true, name: "uq_itemcategories_coffee_name" },
-    );
+    await db
+      .collection("itemcategories")
+      .createIndex({ coffeeId: 1, name: 1 }, { unique: true, name: "uq_itemcategories_coffee_name" });
     await db.collection("itemcategories").createIndex({ coffeeId: 1 }, { name: "idx_itemcategories_coffee" });
     await db.collection("items").createIndex({ itemCategoryId: 1 }, { name: "idx_items_category" });
   },

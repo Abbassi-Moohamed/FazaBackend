@@ -51,7 +51,11 @@ import {
   listTableSessionsController,
   openShiftController,
 } from "../../controllers/admin/coffee-admin/service-shift.controller.js";
-import { orderIdParamsSchema, orderStatusBodySchema, listOrdersQuerySchema } from "../../validators/order.validators.js";
+import {
+  orderIdParamsSchema,
+  orderStatusBodySchema,
+  listOrdersQuerySchema,
+} from "../../validators/order.validators.js";
 
 /**
  * Coffee-admin endpoints. Mounted at /my-coffee; the owning coffee comes from
@@ -70,7 +74,11 @@ coffeeAdminRouter.patch(
   validate({ params: orderIdParamsSchema, body: orderStatusBodySchema }),
   updateMyOrderStatusController,
 );
-coffeeAdminRouter.patch("/orders/:orderId/payment", validate({ params: orderIdParamsSchema }), markMyOrderPaidController);
+coffeeAdminRouter.patch(
+  "/orders/:orderId/payment",
+  validate({ params: orderIdParamsSchema }),
+  markMyOrderPaidController,
+);
 
 // Service shifts and table-session operational views.
 coffeeAdminRouter.get("/shifts/current", getCurrentShiftController);
@@ -79,23 +87,63 @@ coffeeAdminRouter.post("/shifts/close", closeCurrentShiftController);
 coffeeAdminRouter.get("/shifts", validate({ query: listServiceShiftsQuerySchema }), listShiftsController);
 coffeeAdminRouter.get("/shifts/:shiftId/summary", validate({ params: serviceShiftIdParamsSchema }), getShiftController);
 coffeeAdminRouter.get("/shifts/:shiftId", validate({ params: serviceShiftIdParamsSchema }), getShiftController);
-coffeeAdminRouter.post("/shifts/:shiftId/close", validate({ params: serviceShiftIdParamsSchema }), closeShiftController);
-coffeeAdminRouter.patch("/shifts/:shiftId/close", validate({ params: serviceShiftIdParamsSchema }), closeShiftController);
-coffeeAdminRouter.get("/shifts/:shiftId/table-sessions", validate({ params: serviceShiftIdParamsSchema }), listTableSessionsController);
-coffeeAdminRouter.get("/table-sessions", validate({ query: listTableSessionsQuerySchema }), listTableSessionsController);
-coffeeAdminRouter.get("/table-sessions/:sessionId", validate({ params: tableSessionIdParamsSchema }), getTableSessionController);
-coffeeAdminRouter.patch("/table-sessions/:sessionId/close", validate({ params: tableSessionIdParamsSchema }), closeTableSessionController);
+coffeeAdminRouter.post(
+  "/shifts/:shiftId/close",
+  validate({ params: serviceShiftIdParamsSchema }),
+  closeShiftController,
+);
+coffeeAdminRouter.patch(
+  "/shifts/:shiftId/close",
+  validate({ params: serviceShiftIdParamsSchema }),
+  closeShiftController,
+);
+coffeeAdminRouter.get(
+  "/shifts/:shiftId/table-sessions",
+  validate({ params: serviceShiftIdParamsSchema }),
+  listTableSessionsController,
+);
+coffeeAdminRouter.get(
+  "/table-sessions",
+  validate({ query: listTableSessionsQuerySchema }),
+  listTableSessionsController,
+);
+coffeeAdminRouter.get(
+  "/table-sessions/:sessionId",
+  validate({ params: tableSessionIdParamsSchema }),
+  getTableSessionController,
+);
+coffeeAdminRouter.patch(
+  "/table-sessions/:sessionId/close",
+  validate({ params: tableSessionIdParamsSchema }),
+  closeTableSessionController,
+);
 
 // Explicit resource-name aliases for clients that prefer `/service-shifts`.
 coffeeAdminRouter.get("/service-shifts/current", getCurrentShiftController);
 coffeeAdminRouter.post("/service-shifts/open", validate({ body: openServiceShiftBodySchema }), openShiftController);
 coffeeAdminRouter.post("/service-shifts/close", closeCurrentShiftController);
 coffeeAdminRouter.get("/service-shifts", validate({ query: listServiceShiftsQuerySchema }), listShiftsController);
-coffeeAdminRouter.get("/service-shifts/:shiftId/summary", validate({ params: serviceShiftIdParamsSchema }), getShiftController);
+coffeeAdminRouter.get(
+  "/service-shifts/:shiftId/summary",
+  validate({ params: serviceShiftIdParamsSchema }),
+  getShiftController,
+);
 coffeeAdminRouter.get("/service-shifts/:shiftId", validate({ params: serviceShiftIdParamsSchema }), getShiftController);
-coffeeAdminRouter.post("/service-shifts/:shiftId/close", validate({ params: serviceShiftIdParamsSchema }), closeShiftController);
-coffeeAdminRouter.patch("/service-shifts/:shiftId/close", validate({ params: serviceShiftIdParamsSchema }), closeShiftController);
-coffeeAdminRouter.get("/service-shifts/:shiftId/table-sessions", validate({ params: serviceShiftIdParamsSchema }), listTableSessionsController);
+coffeeAdminRouter.post(
+  "/service-shifts/:shiftId/close",
+  validate({ params: serviceShiftIdParamsSchema }),
+  closeShiftController,
+);
+coffeeAdminRouter.patch(
+  "/service-shifts/:shiftId/close",
+  validate({ params: serviceShiftIdParamsSchema }),
+  closeShiftController,
+);
+coffeeAdminRouter.get(
+  "/service-shifts/:shiftId/table-sessions",
+  validate({ params: serviceShiftIdParamsSchema }),
+  listTableSessionsController,
+);
 
 // Coffee information + PIN change.
 coffeeAdminRouter.get("/", getMyCoffeeController);
@@ -127,9 +175,9 @@ coffeeAdminRouter.post(
   validate({ params: categoryIdParamsSchema, body: itemBodySchema }),
   createMyItemController,
 );
-coffeeAdminRouter.patch("/items/:itemId", validate({ params: itemIdParamsSchema, body: updateItemBodySchema }), updateMyItemController);
-coffeeAdminRouter.delete(
+coffeeAdminRouter.patch(
   "/items/:itemId",
-  validate({ params: itemIdParamsSchema }),
-  deleteMyItemController,
+  validate({ params: itemIdParamsSchema, body: updateItemBodySchema }),
+  updateMyItemController,
 );
+coffeeAdminRouter.delete("/items/:itemId", validate({ params: itemIdParamsSchema }), deleteMyItemController);

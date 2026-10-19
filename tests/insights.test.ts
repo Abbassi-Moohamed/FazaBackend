@@ -80,9 +80,7 @@ describe("insights", () => {
       {
         coffeeId: BUNDLE.coffeeId,
         tableNumber: 1,
-        items: [
-          { itemId: espressoId, name: "Espresso", image: null, quantity: 1, unitPrice: 2.5, subtotal: 2.5 },
-        ],
+        items: [{ itemId: espressoId, name: "Espresso", image: null, quantity: 1, unitPrice: 2.5, subtotal: 2.5 }],
         total: 2.5,
         status: "REJECTED",
         createdAt: new Date("2025-02-05T12:00:00.000Z"),
@@ -92,7 +90,14 @@ describe("insights", () => {
         coffeeId: (await request(app).get("/api/v1/coffees/brew-and-beans")).body.data.id,
         tableNumber: 3,
         items: [
-          { itemId: BUNDLE.itemIds.coldBrew, name: "Cold Brew", image: null, quantity: 1, unitPrice: 4.5, subtotal: 4.5 },
+          {
+            itemId: BUNDLE.itemIds.coldBrew,
+            name: "Cold Brew",
+            image: null,
+            quantity: 1,
+            unitPrice: 4.5,
+            subtotal: 4.5,
+          },
         ],
         total: 4.5,
         status: "CONFIRMED",
@@ -102,9 +107,7 @@ describe("insights", () => {
       {
         coffeeId: BUNDLE.coffeeId,
         tableNumber: 7,
-        items: [
-          { itemId: cappuccinoId, name: "Cappuccino", image: null, quantity: 2, unitPrice: 3.0, subtotal: 6 },
-        ],
+        items: [{ itemId: cappuccinoId, name: "Cappuccino", image: null, quantity: 2, unitPrice: 3.0, subtotal: 6 }],
         total: 6,
         status: "CONFIRMED",
         createdAt: previous,
@@ -167,7 +170,10 @@ describe("insights", () => {
 
   it("counts availability across every category owned by the coffee", async () => {
     const categoryIds = await ItemCategoryModel.find({ coffeeId: BUNDLE.coffeeId }).distinct("_id").exec();
-    const coffeeItems = await ItemModel.find({ itemCategoryId: { $in: categoryIds } }).select({ _id: 1 }).lean().exec();
+    const coffeeItems = await ItemModel.find({ itemCategoryId: { $in: categoryIds } })
+      .select({ _id: 1 })
+      .lean()
+      .exec();
     expect(categoryIds.length).toBeGreaterThan(1);
     expect(coffeeItems.length).toBeGreaterThan(2);
 
@@ -185,7 +191,10 @@ describe("insights", () => {
 
   it("counts null availability as available and only explicit false as unavailable", async () => {
     const categoryIds = await ItemCategoryModel.find({ coffeeId: BUNDLE.coffeeId }).distinct("_id").exec();
-    const coffeeItems = await ItemModel.find({ itemCategoryId: { $in: categoryIds } }).select({ _id: 1 }).lean().exec();
+    const coffeeItems = await ItemModel.find({ itemCategoryId: { $in: categoryIds } })
+      .select({ _id: 1 })
+      .lean()
+      .exec();
     expect(coffeeItems.length).toBeGreaterThan(1);
 
     await ItemModel.updateMany({ _id: { $in: coffeeItems.map((item) => item._id) } }, { $unset: { isAvailable: 1 } });
