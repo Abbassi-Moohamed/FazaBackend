@@ -8,7 +8,13 @@ const tableSessionSchema = new Schema(
     coffeeId: { type: Schema.Types.ObjectId, ref: "Coffee", required: true, index: true },
     tableNumber: { type: Number, required: true, min: 1, max: 10000 },
     serviceShiftId: { type: Schema.Types.ObjectId, ref: "ServiceShift", default: null, index: true },
-    sessionTokenHash: { type: String, required: true, unique: true, select: false },
+    sessionTokenHash: {
+      type: String,
+      required: true,
+      unique: true,
+      name: "uq_table_sessions_token_hash",
+      select: false,
+    },
     status: { type: String, enum: TABLE_SESSION_STATUSES, required: true, default: "ACTIVE", index: true },
     openedAt: { type: Date, required: true, default: Date.now },
     closedAt: { type: Date, default: null },
@@ -24,8 +30,8 @@ tableSessionSchema.index(
   { coffeeId: 1, tableNumber: 1, status: 1, lastOrderAt: -1 },
   { name: "idx_table_sessions_table_status" },
 );
-tableSessionSchema.index({ coffeeId: 1, serviceShiftId: 1, createdAt: -1 });
-tableSessionSchema.index({ coffeeId: 1, status: 1, lastOrderAt: -1 });
+tableSessionSchema.index({ coffeeId: 1, serviceShiftId: 1, createdAt: -1 }, { name: "idx_table_sessions_shift" });
+tableSessionSchema.index({ coffeeId: 1, status: 1, lastOrderAt: -1 }, { name: "idx_table_sessions_status" });
 
 export type TableSession = InferSchemaType<typeof tableSessionSchema> & { _id: Types.ObjectId };
 export const TableSessionModel = model<TableSession>("TableSession", tableSessionSchema);

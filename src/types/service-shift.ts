@@ -13,6 +13,21 @@ export interface ServiceShiftDto {
   summary?: unknown;
 }
 
+/**
+ * Aggregated bill of a table session. Computed by the server so the
+ * backoffice never has to rebuild it from a truncated order list.
+ */
+export interface TableSessionTotals {
+  totalOrders: number;
+  confirmedOrders: number;
+  pendingOrders: number;
+  rejectedOrders: number;
+  confirmedRevenue: number;
+  paidRevenue: number;
+  outstandingRevenue: number;
+  pendingRevenue: number;
+}
+
 export interface TableSessionDto {
   id: string;
   coffeeId: string;
@@ -24,4 +39,5 @@ export interface TableSessionDto {
   lastOrderAt: Date;
   orderCount: number;
   summary?: unknown;
+  totals?: TableSessionTotals;
 }

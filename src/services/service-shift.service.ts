@@ -14,7 +14,7 @@ import {
 } from "../repositories/service-shift.repository.js";
 import type { ServiceShiftStatus, ServiceShiftType } from "../models/service-shift.model.js";
 import type { TableSessionStatus } from "../models/table-session.model.js";
-import type { ServiceShiftDto, TableSessionDto } from "../types/service-shift.js";
+import type { ServiceShiftDto, TableSessionDto, TableSessionTotals } from "../types/service-shift.js";
 import { ApiError } from "../utils/ApiError.js";
 
 interface ServiceShiftDoc {
@@ -53,8 +53,14 @@ interface TableSessionSummaryDoc extends TableSessionDoc {
   orders?: SessionOrderRow[];
 }
 
+interface SessionOrderSummaryRow {
+  _id?: { status?: string; paymentStatus?: string };
+  count?: number;
+  revenue?: number;
+}
+
 interface TableSessionListRow extends TableSessionDoc {
-  orderSummary?: Array<{ _id?: { status?: string }; count?: number; revenue?: number }>;
+  orderSummary?: SessionOrderSummaryRow[];
 }
 
 function shiftDto(shift: ServiceShiftDoc, summary?: unknown): ServiceShiftDto {
@@ -72,7 +78,7 @@ function shiftDto(shift: ServiceShiftDoc, summary?: unknown): ServiceShiftDto {
   };
 }
 
-function sessionDto(session: TableSessionDoc, summary?: unknown): TableSessionDto {
+function sessionDto(session: TableSessionDoc, summary?: unknown, totals?: TableSessionTotals): TableSessionDto {
   return {
     id: session._id.toString(),
     coffeeId: session.coffeeId.toString(),
@@ -84,6 +90,37 @@ function sessionDto(session: TableSessionDoc, summary?: unknown): TableSessionDt
     lastOrderAt: session.lastOrderAt,
     orderCount: session.orderCount,
     ...(summary !== undefined ? { summary } : {}),
+    ...(totals !== undefined ? { totals } : {}),
+  };
+}
+
+/**
+ * Bill of a session, aggregated by the database over its orders.
+ *
+ * The list of sessions is the backoffice's source of truth for the bills:
+ * computing them here keeps them exact even when the session holds more
+ * orders than a paginated order list could ever return.
+ */
+function sessionTotalsDto(session: TableSessionListRow): TableSessionTotals {
+  const rows = Array.isArray(session.orderSummary) ? session.orderSummary : [];
+  const count = (predicate: (row: SessionOrderSummaryRow) => boolean) =>
+    rows.filter(predicate).reduce((total, row) => total + Number(row.count ?? 0), 0);
+  const revenue = (predicate: (row: SessionOrderSummaryRow) => boolean) =>
+    rows.filter(predicate).reduce((total, row) => total + Number(row.revenue ?? 0), 0);
+
+  const withStatus = (status: string) => (row: SessionOrderSummaryRow) => row._id?.status === status;
+  const isConfirmed = withStatus("CONFIRMED");
+  const isPaid = (row: SessionOrderSummaryRow) => row._id?.paymentStatus === "PAID";
+
+  return {
+    totalOrders: count(() => true),
+    confirmedOrders: count(isConfirmed),
+    pendingOrders: count(withStatus("PENDING")),
+    rejectedOrders: count(withStatus("REJECTED")),
+    confirmedRevenue: revenue(isConfirmed),
+    paidRevenue: revenue((row) => isConfirmed(row) && isPaid(row)),
+    outstandingRevenue: revenue((row) => isConfirmed(row) && !isPaid(row)),
+    pendingRevenue: revenue(withStatus("PENDING")),
   };
 }
 
@@ -200,7 +237,12 @@ export async function getCoffeeTableSessions(
   const page = options.page ?? 1;
   const limit = options.limit ?? 50;
   const result = await listTableSessions(coffeeId, { ...options, skip: (page - 1) * limit, limit });
-  return { sessions: result.sessions.map((session) => sessionDto(session)), total: result.total, page, limit };
+  return {
+    sessions: result.sessions.map((session) => sessionDto(session, undefined, sessionTotalsDto(session))),
+    total: result.total,
+    page,
+    limit,
+  };
 }
 
 export async function getCoffeeTableSession(coffeeId: string, sessionId: string): Promise<TableSessionDto> {

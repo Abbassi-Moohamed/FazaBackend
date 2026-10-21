@@ -183,4 +183,60 @@ describe("table sessions and service shifts", () => {
     expect(closed.status).toBe(200);
     expect(closed.body.data.status).toBe("CLOSED");
   });
+
+  it("serves the aggregated bill of every active session", async () => {
+    await request(app)
+      .post("/api/v1/admin/my-coffee/service-shifts/open")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    const order = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 20,
+        items: [{ itemId, quantity: 1 }],
+      });
+    expect(order.status).toBe(201);
+    const orderId = order.body.data.id as string;
+    const sessionId = order.body.data.tableSessionId as string;
+    const total = (await OrderModel.findById(orderId).lean().exec())!.total;
+
+    const confirmed = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "CONFIRMED" });
+    expect(confirmed.status).toBe(200);
+
+    const list = await request(app)
+      .get("/api/v1/admin/my-coffee/table-sessions")
+      .query({ status: "ACTIVE" })
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const session = list.body.data.sessions.find((item: { id: string }) => item.id === sessionId);
+    expect(session).toBeDefined();
+    expect(session.totals).toEqual({
+      totalOrders: 1,
+      confirmedOrders: 1,
+      pendingOrders: 0,
+      rejectedOrders: 0,
+      confirmedRevenue: total,
+      paidRevenue: 0,
+      outstandingRevenue: total,
+      pendingRevenue: 0,
+    });
+
+    const paid = await request(app)
+      .patch(`/api/v1/admin/my-coffee/orders/${orderId}/payment`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(paid.status).toBe(200);
+
+    const refreshed = await request(app)
+      .get("/api/v1/admin/my-coffee/table-sessions")
+      .query({ status: "ACTIVE" })
+      .set("Authorization", `Bearer ${token}`);
+    const refreshedSession = refreshed.body.data.sessions.find((item: { id: string }) => item.id === sessionId);
+    expect(refreshedSession.totals.paidRevenue).toBe(total);
+    expect(refreshedSession.totals.outstandingRevenue).toBe(0);
+  });
 });
