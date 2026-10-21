@@ -165,6 +165,31 @@ describe("realtime order events", () => {
     customer.disconnect();
   });
 
+  it("stops pushing to a session room once the visitor unsubscribes", async () => {
+    const adminToken = await issueAdminToken({ role: "COFFEE_ADMIN", coffeeId });
+    const admin = await connectClient(url, { token: adminToken });
+    const customer = await connectClient(url);
+
+    const placed = await placeTestOrder(24);
+    await subscribeToSession(customer, placed.sessionToken!);
+
+    customer.emit("session:unsubscribe", placed.sessionToken!);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    let received = false;
+    customer.on("order:updated", () => {
+      received = true;
+    });
+
+    await openServiceShift(coffeeId, { type: "MORNING" });
+    await changeOrderStatus(coffeeId, placed.id, "CONFIRMED");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(received).toBe(false);
+
+    admin.disconnect();
+    customer.disconnect();
+  });
+
   it("does not deliver order:new to admins of a different coffee", async () => {
     const otherCoffee = await CoffeeModel.findOne({ slug: "brew-and-beans" }).lean().exec();
     const otherToken = await issueAdminToken({ role: "COFFEE_ADMIN", coffeeId: otherCoffee!._id.toString() });

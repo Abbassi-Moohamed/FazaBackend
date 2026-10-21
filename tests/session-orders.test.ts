@@ -98,4 +98,47 @@ describe("session order history", () => {
     expect(response.body.data.orders).toHaveLength(1);
     expect(response.body.data.session.status).toBe("CLOSED");
   });
+
+  it("caps the history to the requested limit", async () => {
+    const first = await placeOrder(11);
+    await placeOrder(11, first.sessionToken);
+    await placeOrder(11, first.sessionToken);
+
+    const response = await request(app).get("/api/v1/orders").query({ sessionToken: first.sessionToken, limit: 2 });
+    expect(response.status).toBe(200);
+    expect(response.body.data.orders).toHaveLength(2);
+    expect(response.body.data.total).toBe(3);
+  });
+
+  it("rejects a limit outside the allowed range", async () => {
+    const order = await placeOrder(12);
+
+    const tooSmall = await request(app).get("/api/v1/orders").query({ sessionToken: order.sessionToken, limit: 0 });
+    expect(tooSmall.status).toBe(400);
+
+    const tooBig = await request(app).get("/api/v1/orders").query({ sessionToken: order.sessionToken, limit: 101 });
+    expect(tooBig.status).toBe(400);
+  });
+
+  it("accepts the session token in the x-session-token header", async () => {
+    const order = await placeOrder(13);
+
+    const response = await request(app).get("/api/v1/orders").set("x-session-token", order.sessionToken);
+    expect(response.status).toBe(200);
+    expect(response.body.data.orders.map((item: { id: string }) => item.id)).toEqual([order.id]);
+  });
+
+  it("refuses to reuse a session token for another table", async () => {
+    const order = await placeOrder(14);
+
+    const response = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 15,
+        sessionToken: order.sessionToken,
+        items: [{ itemId, quantity: 1 }],
+      });
+    expect(response.status).toBe(401);
+  });
 });

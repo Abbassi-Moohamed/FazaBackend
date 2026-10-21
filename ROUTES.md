@@ -51,11 +51,11 @@ Content-Type: application/json
 
 ## 3.5 Visitor orders
 
-| Method | Route                     | Auth | Description                                       |
-| ------ | ------------------------- | ---- | ------------------------------------------------- |
-| `POST` | `/api/v1/orders`          | —    | Create an order from the selected coffee menu     |
+| Method | Route                     | Auth | Description                                          |
+| ------ | ------------------------- | ---- | ---------------------------------------------------- |
+| `POST` | `/api/v1/orders`          | —    | Create an order from the selected coffee menu        |
 | `GET`  | `/api/v1/orders`          | —    | List every order of a table session (`sessionToken`) |
-| `GET`  | `/api/v1/orders/:orderId` | —    | Read the current status of an order               |
+| `GET`  | `/api/v1/orders/:orderId` | —    | Read the current status of an order                  |
 
 The request must include `coffeeSlug`, a positive table number (1–10000), and
 one or more `{ "itemId", "quantity" }` lines. The server verifies that
