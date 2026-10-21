@@ -33,6 +33,16 @@ export async function listOrders(
   return { orders, total };
 }
 
+export async function listOrdersByTableSession(tableSessionId: string, limit = 50) {
+  if (!Types.ObjectId.isValid(tableSessionId)) return { orders: [], total: 0 };
+  const filter = { tableSessionId: new Types.ObjectId(tableSessionId) };
+  const [orders, total] = await Promise.all([
+    OrderModel.find(filter).sort({ createdAt: -1 }).limit(limit).lean().exec(),
+    OrderModel.countDocuments(filter).exec(),
+  ]);
+  return { orders, total };
+}
+
 export async function findOrderWithSession(orderId: string) {
   if (!Types.ObjectId.isValid(orderId)) return null;
   return OrderModel.findById(orderId).select("+tableSessionId +serviceShiftId").lean().exec();

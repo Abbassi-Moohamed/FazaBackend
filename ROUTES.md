@@ -51,16 +51,33 @@ Content-Type: application/json
 
 ## 3.5 Visitor orders
 
-| Method | Route                     | Auth | Description                                   |
-| ------ | ------------------------- | ---- | --------------------------------------------- |
-| `POST` | `/api/v1/orders`          | —    | Create an order from the selected coffee menu |
-| `GET`  | `/api/v1/orders/:orderId` | —    | Read the current status of an order           |
+| Method | Route                     | Auth | Description                                       |
+| ------ | ------------------------- | ---- | ------------------------------------------------- |
+| `POST` | `/api/v1/orders`          | —    | Create an order from the selected coffee menu     |
+| `GET`  | `/api/v1/orders`          | —    | List every order of a table session (`sessionToken`) |
+| `GET`  | `/api/v1/orders/:orderId` | —    | Read the current status of an order               |
 
 The request must include `coffeeSlug`, a positive table number (1–10000), and
 one or more `{ "itemId", "quantity" }` lines. The server verifies that
 every item belongs to that coffee, is available, and calculates the total from
 the current menu price (including an active promotion). Order lines store
 immutable item id, name, quantity, unit price and line subtotal snapshots.
+
+### Table sessions
+
+A **table session** is the customer sitting at a table, not the table itself:
+a table can host several concurrent sessions (two parties sharing a table
+never share a bill). The session token returned by the first order is the only
+credential of that session.
+
+- `POST /api/v1/orders` without `sessionToken` opens a new session and returns
+  its `sessionToken`; with a `sessionToken` the order is appended to that
+  session.
+- `GET /api/v1/orders?sessionToken=…` returns the whole history of one session
+  (newest first, `limit` up to 100) plus a summary of the session. The history
+  stays readable after the session is closed.
+- Realtime: `session:subscribe { sessionToken }` joins the `session:{id}` room
+  and streams `order:new` / `order:updated` for that session only.
 
 ```json
 {

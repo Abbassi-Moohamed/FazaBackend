@@ -16,6 +16,10 @@ export const createOrderBodySchema = z.object({
 
 export const orderIdParamsSchema = z.object({ orderId: objectId });
 export const publicOrderQuerySchema = z.object({ sessionToken: z.string().trim().min(20).max(256).optional() });
+export const sessionOrdersQuerySchema = z.object({
+  sessionToken: z.string().trim().min(20).max(256).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 export const orderStatusBodySchema = z.object({ status: z.enum(ORDER_STATUSES) });
 export const listOrdersQuerySchema = z.object({
   status: z.enum(ORDER_STATUSES).optional(),

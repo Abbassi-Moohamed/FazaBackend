@@ -18,11 +18,11 @@ const tableSessionSchema = new Schema(
   { timestamps: true, versionKey: false, collection: "table_sessions" },
 );
 
-// MongoDB enforces this invariant atomically, including concurrent first
-// orders for the same coffee/table.
+// A table can host several concurrent sessions (different parties sharing a
+// table): the session token — not the table number — identifies the customer.
 tableSessionSchema.index(
-  { coffeeId: 1, tableNumber: 1 },
-  { unique: true, partialFilterExpression: { status: "ACTIVE" }, name: "uq_table_sessions_active_table" },
+  { coffeeId: 1, tableNumber: 1, status: 1, lastOrderAt: -1 },
+  { name: "idx_table_sessions_table_status" },
 );
 tableSessionSchema.index({ coffeeId: 1, serviceShiftId: 1, createdAt: -1 });
 tableSessionSchema.index({ coffeeId: 1, status: 1, lastOrderAt: -1 });

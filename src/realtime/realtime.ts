@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { verifyAdminToken } from "../auth/token.js";
 import { isOriginAllowed } from "../config/cors.js";
+import { findTableSessionByToken } from "../repositories/table-session.repository.js";
 import type { OrderDto } from "../types/order.js";
 import { logger } from "../utils/logger.js";
 
@@ -22,6 +23,10 @@ import { logger } from "../utils/logger.js";
  *   fetch from the public GET /orders/:orderId endpoint.
  * - `order:subscribe { orderId }` / `order:unsubscribe { orderId }` (client
  *   to server): join/leave `order:{orderId}`, receiving `order:updated`.
+ * - `session:subscribe { sessionToken }` / `session:unsubscribe { sessionToken }`
+ *   (client to server): join/leave `session:{tableSessionId}`, receiving every
+ *   order event of that table session. The token is verified server-side, so a
+ *   client can only watch a session it owns.
  *
  * Events (server to client):
  * - `order:new`     — an order was placed; payload OrderDto (no sessionToken).
@@ -38,6 +43,8 @@ type PublicOrder = Omit<OrderDto, "sessionToken">;
 interface ClientToServerEvents {
   "order:subscribe": (orderId: string, ack?: (result: { joined: boolean }) => void) => void;
   "order:unsubscribe": (orderId: string) => void;
+  "session:subscribe": (sessionToken: string, ack?: (result: { joined: boolean }) => void) => void;
+  "session:unsubscribe": (sessionToken: string) => void;
 }
 
 interface ServerToClientEvents {
@@ -52,6 +59,8 @@ export const ORDER_NEW_EVENT = "order:new";
 export const ORDER_UPDATED_EVENT = "order:updated";
 export const ORDER_SUBSCRIBE_EVENT = "order:subscribe";
 export const ORDER_UNSUBSCRIBE_EVENT = "order:unsubscribe";
+export const SESSION_SUBSCRIBE_EVENT = "session:subscribe";
+export const SESSION_UNSUBSCRIBE_EVENT = "session:unsubscribe";
 
 let io: RealtimeServer | null = null;
 
@@ -61,6 +70,21 @@ function coffeeRoom(coffeeId: string): string {
 
 function orderRoom(orderId: string): string {
   return `order:${orderId}`;
+}
+
+function sessionRoom(tableSessionId: string): string {
+  return `session:${tableSessionId}`;
+}
+
+/** The room of the table session an order belongs to, when it has one. */
+function sessionRooms(order: OrderDto): string[] {
+  return order.tableSessionId ? [sessionRoom(order.tableSessionId)] : [];
+}
+
+async function resolveSessionRoom(sessionToken: unknown): Promise<string | null> {
+  if (typeof sessionToken !== "string" || sessionToken.length < 20 || sessionToken.length > 256) return null;
+  const session = await findTableSessionByToken(sessionToken);
+  return session ? sessionRoom(session._id.toString()) : null;
 }
 
 function registerClientEvents(socket: RealtimeSocket): void {
@@ -82,6 +106,24 @@ function registerClientEvents(socket: RealtimeSocket): void {
   socket.on(ORDER_UNSUBSCRIBE_EVENT, (orderId) => {
     if (typeof orderId !== "string") return;
     void socket.leave(orderRoom(orderId));
+  });
+  socket.on(SESSION_SUBSCRIBE_EVENT, async (sessionToken, ack) => {
+    try {
+      const room = await resolveSessionRoom(sessionToken);
+      if (!room) {
+        ack?.({ joined: false });
+        return;
+      }
+      await socket.join(room);
+      ack?.({ joined: true });
+    } catch {
+      ack?.({ joined: false });
+    }
+  });
+  socket.on(SESSION_UNSUBSCRIBE_EVENT, (sessionToken) => {
+    void resolveSessionRoom(sessionToken).then((room) => {
+      if (room) void socket.leave(room);
+    });
   });
 }
 
@@ -157,13 +199,13 @@ export function publishOrderCreated(order: OrderDto): void {
   // Never broadcast the session token — it only belongs to the ordering
   // client's own response body.
   const { sessionToken: _sessionToken, ...payload } = order;
-  io.to(coffeeRoom(order.coffeeId)).emit(ORDER_NEW_EVENT, payload);
+  // Single emit over the union of the rooms: Socket.IO delivers at most once
+  // per socket even when it sits in several (dedup is per-socket).
+  io.to([coffeeRoom(order.coffeeId), ...sessionRooms(order)]).emit(ORDER_NEW_EVENT, payload);
 }
 
 export function publishOrderUpdated(order: OrderDto): void {
   if (!io) return;
   const { sessionToken: _sessionToken, ...payload } = order;
-  // Single emit over the union of both rooms: Socket.IO delivers at most
-  // once per socket even when it sits in both (dedup is per-socket).
-  io.to(coffeeRoom(order.coffeeId)).to(orderRoom(order.id)).emit(ORDER_UPDATED_EVENT, payload);
+  io.to([coffeeRoom(order.coffeeId), orderRoom(order.id), ...sessionRooms(order)]).emit(ORDER_UPDATED_EVENT, payload);
 }

@@ -53,6 +53,18 @@ function subscribeToOrder(socket: ClientSocket, orderId: string): Promise<void> 
   });
 }
 
+/** Subscribes to a table session room with the session token as proof of ownership. */
+function subscribeToSession(socket: ClientSocket, sessionToken: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for session subscribe ack")), 3_000);
+    socket.emit("session:subscribe", sessionToken, (result: { joined: boolean }) => {
+      clearTimeout(timer);
+      if (result.joined) resolve();
+      else reject(new Error("Server refused the session subscription"));
+    });
+  });
+}
+
 describe("realtime order events", () => {
   let database: TestDatabase;
   let httpServer: HttpServer;
@@ -118,6 +130,38 @@ describe("realtime order events", () => {
     expect(updated.status).toBe("CONFIRMED");
 
     admin.disconnect();
+    customer.disconnect();
+  });
+
+  it("pushes order updates to a customer subscribed to its table session", async () => {
+    const adminToken = await issueAdminToken({ role: "COFFEE_ADMIN", coffeeId });
+    const admin = await connectClient(url, { token: adminToken });
+    const customer = await connectClient(url);
+
+    const placed = await placeTestOrder(23);
+    await subscribeToSession(customer, placed.sessionToken!);
+
+    const updatedReceived = expectEvent(customer, "order:updated");
+    await openServiceShift(coffeeId, { type: "MORNING" });
+    await changeOrderStatus(coffeeId, placed.id, "CONFIRMED");
+    const updated = await updatedReceived;
+    expect(updated.id).toBe(placed.id);
+    expect(updated.status).toBe("CONFIRMED");
+
+    admin.disconnect();
+    customer.disconnect();
+  });
+
+  it("refuses a session subscription without a valid session token", async () => {
+    const customer = await connectClient(url);
+    const result = await new Promise<{ joined: boolean }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for session ack")), 3_000);
+      customer.emit("session:subscribe", "not-a-real-session-token", (ack: { joined: boolean }) => {
+        clearTimeout(timer);
+        resolve(ack);
+      });
+    });
+    expect(result.joined).toBe(false);
     customer.disconnect();
   });
 

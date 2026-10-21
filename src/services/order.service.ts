@@ -6,6 +6,7 @@ import {
   findOrder,
   findOrderOwnedByCoffee,
   listOrders,
+  listOrdersByTableSession,
   markOrderPaid,
   updateOrderStatus,
 } from "../repositories/order.repository.js";
@@ -13,7 +14,6 @@ import { findCurrentServiceShift } from "../repositories/service-shift.repositor
 import {
   createTableSession,
   assignTableSessionToServiceShift,
-  findActiveTableSession,
   findTableSessionByToken,
   generateSessionToken,
   hashSessionToken,
@@ -51,8 +51,8 @@ function dto(order: Order, sessionToken?: string): OrderDto {
 
 async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number, suppliedToken?: string) {
   const activeShift = await findCurrentServiceShift(coffeeId.toString());
-  let session = suppliedToken ? await findTableSessionByToken(suppliedToken) : null;
   if (suppliedToken) {
+    const session = await findTableSessionByToken(suppliedToken);
     if (
       !session ||
       session.status !== "ACTIVE" ||
@@ -64,26 +64,17 @@ async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number
     return { session, sessionToken: suppliedToken, serviceShiftId: activeShift?._id ?? null };
   }
 
-  session = await findActiveTableSession(coffeeId.toString(), tableNumber);
-  if (!session) {
-    const sessionToken = generateSessionToken();
-    try {
-      session = await createTableSession({
-        coffeeId,
-        tableNumber,
-        serviceShiftId: activeShift?._id ?? null,
-        sessionTokenHash: hashSessionToken(sessionToken),
-      });
-      return { session, sessionToken, serviceShiftId: activeShift?._id ?? null };
-    } catch (error) {
-      // The partial unique index is the synchronization primitive. A
-      // concurrent first order wins; the loser adopts that active session.
-      if (typeof error !== "object" || error === null || (error as { code?: number }).code !== 11000) throw error;
-      session = await findActiveTableSession(coffeeId.toString(), tableNumber);
-      if (!session) throw error;
-    }
-  }
-  return { session, serviceShiftId: activeShift?._id ?? null };
+  // No token: this device starts its own session. A table can host several
+  // concurrent sessions (different parties sharing a table), so an existing
+  // session is never adopted — that would merge two customers' bills.
+  const sessionToken = generateSessionToken();
+  const session = await createTableSession({
+    coffeeId,
+    tableNumber,
+    serviceShiftId: activeShift?._id ?? null,
+    sessionTokenHash: hashSessionToken(sessionToken),
+  });
+  return { session, sessionToken, serviceShiftId: activeShift?._id ?? null };
 }
 
 export async function placeOrder(input: {
@@ -154,6 +145,29 @@ export async function getPublicOrder(orderId: string, sessionToken?: string) {
     }
   }
   return dto(order);
+}
+
+/**
+ * Every order placed by one table session, newest first. The session token is
+ * the only credential: it proves the caller owns the session, so the list is
+ * scoped to a single party even when several sessions share a table.
+ */
+export async function getSessionOrders(sessionToken: string | undefined, limit = 50) {
+  if (!sessionToken) throw new ApiError(401, "Session token is required.");
+  const session = await findTableSessionByToken(sessionToken);
+  if (!session) throw new ApiError(401, "Invalid session token.");
+  const result = await listOrdersByTableSession(session._id.toString(), limit);
+  return {
+    orders: result.orders.map((order) => dto(order)),
+    total: result.total,
+    session: {
+      tableNumber: session.tableNumber,
+      status: session.status,
+      orderCount: session.orderCount,
+      openedAt: session.openedAt,
+      closedAt: session.closedAt ?? null,
+    },
+  };
 }
 
 export async function getCoffeeOrder(coffeeId: string, orderId: string) {

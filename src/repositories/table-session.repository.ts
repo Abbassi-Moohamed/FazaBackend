@@ -10,16 +10,6 @@ export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-export async function findActiveTableSession(coffeeId: string, tableNumber: number) {
-  if (!Types.ObjectId.isValid(coffeeId)) return null;
-  const filter: Record<string, unknown> = {
-    coffeeId: new Types.ObjectId(coffeeId),
-    tableNumber,
-    status: "ACTIVE",
-  };
-  return TableSessionModel.findOne(filter).select("+sessionTokenHash").exec();
-}
-
 export async function findTableSessionByToken(token: string) {
   return TableSessionModel.findOne({ sessionTokenHash: hashSessionToken(token) })
     .select("+sessionTokenHash")
