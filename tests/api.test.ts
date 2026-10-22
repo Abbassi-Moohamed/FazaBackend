@@ -45,10 +45,15 @@ describe("Faza public API", () => {
       expect(response.body.data.endpoints.coffeeBySlug).toBe("/api/v1/coffees/:coffeeSlug");
     });
 
-    it("GET /health returns ok", async () => {
+    it("GET /health returns ok and the build identity", async () => {
       const response = await request(app).get("/health");
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ status: "ok" });
+      expect(response.body.status).toBe("ok");
+      expect(response.body.apiVersion).toBe("v1");
+      // The build identity lets a deploy be tied to the commit that was pushed.
+      expect(typeof response.body.buildSha).toBe("string");
+      expect(response.body.buildSha.length).toBeGreaterThan(0);
+      expect(typeof response.body.uptimeSeconds).toBe("number");
     });
 
     it("GET /health/ready reports the database is up", async () => {

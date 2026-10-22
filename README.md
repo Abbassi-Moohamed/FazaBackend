@@ -103,6 +103,70 @@ return `404` rather than disclosing another coffee's data.
 - The app factory is separate from process startup so the HTTP API can be
   tested without a listening server.
 
+## CI/CD
+
+`.github/workflows/ci-cd.yml` runs on every push to `main`, on every pull
+request, and on demand (`workflow_dispatch`):
+
+| Job      | What it does                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------ |
+| `verify` | `npm ci`, typecheck, lint, format check, tests, build. Pull requests stop here.                              |
+| `deploy` | Creates a Render deploy for the pushed commit (`scripts/deploy-render.mjs`) and waits for its status.        |
+| `smoke`  | Checks the live API (`scripts/smoke.mjs`): the critical routes must exist and the build must be the new one. |
+
+The smoke job is the important one: the API and the frontend are deployed
+independently, so a route missing from the live build is invisible in the
+repository and only shows up in the browser as a `404`. Every check treats a
+`404` carrying "Route not found" as a failure, while an authenticated `401`
+or a domain `404` proves the route exists.
+
+### Repository secrets and variables
+
+| Name                     | Kind     | Required | Purpose                                                                |
+| ------------------------ | -------- | -------- | ---------------------------------------------------------------------- |
+| `RENDER_API_KEY`         | secret   | yes¹     | Render workspace API key (Render → Account Settings → API Keys)        |
+| `RENDER_SERVICE_ID`      | secret   | yes¹     | Service id of the API service (the service URL ends with `/svc/<id>`)  |
+| `RENDER_DEPLOY_HOOK_URL` | secret   | no¹      | Deploy hook used when the API key is not available                     |
+| `DATABASE_URL`           | secret   | no²      | Production MongoDB URI, used to apply the migrations                   |
+| `PRODUCTION_API_URL`     | variable | no       | API origin to smoke test (default `https://menuscanapis.onrender.com`) |
+
+¹ Set either `RENDER_API_KEY` + `RENDER_SERVICE_ID` (preferred: the deploy
+status is polled, so a failed build fails the workflow) or
+`RENDER_DEPLOY_HOOK_URL`.
+
+² The migrations are idempotent, so they can run from the workflow or from
+the Render build command (`npm run db:migrate && npm run build`). Keep one of
+the two in place: a deploy that skips a migration ships code that expects
+indexes the database does not have.
+
+`/health` reports the deployed commit (`buildSha`) and the build time
+(`builtAt`), so a release can be traced back to its commit and the smoke job
+can wait for the exact build it triggered. The commit is baked into the
+artifact by `scripts/write-build-info.mjs` (run by `npm run build`) from
+`RENDER_GIT_COMMIT`/`GIT_SHA`, so the identity survives independently of the
+runtime environment variables.
+
+### Render service settings
+
+| Setting       | Value                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| Build command | `npm run build` (add `npm run db:migrate &&` in front to migrate on deploy) |
+| Start command | `npm start`                                                                 |
+| Health check  | `/health/ready`                                                             |
+| Branch        | `main`                                                                      |
+| Auto-deploy   | off, when the workflow deploys the service                                  |
+
+### Local commands
+
+```bash
+npm run check                 # typecheck + tests
+npm run smoke -- --url https://menuscanapis.onrender.com
+npm run deploy -- --sha "$(git rev-parse HEAD)" --dry-run
+```
+
+If Render's own "auto-deploy" is enabled in the dashboard, disable it so the
+service is only deployed by this workflow.
+
 ## Future Development Handoff
 
 - Add new routes to the appropriate versioned router under `src/routes/` and

@@ -1,0 +1,105 @@
+name: CI/CD
+
+# Every push to main (a merge is a push to main) runs the checks, deploys the
+# API to Render and verifies the live service. Pull requests run the checks
+# only, so a broken branch never reaches production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time: a second push waits for the first deploy to finish
+# instead of racing it.
+concurrency:
+  group: faza-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache the in-memory MongoDB binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
+
+      - name: Store the build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-dist
+          path: dist
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Render
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply the database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "No DATABASE_URL secret: migrations are skipped (run them from Render instead)."
+            exit 0
+          fi
+          npm ci
+          npm run db:migrate
+
+      - name: Trigger the Render deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: node scripts/deploy-render.mjs --sha "${{ github.sha }}"
+
+  smoke:
+    name: Verify the live API
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the critical routes on the live API
+        env:
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          node scripts/smoke.mjs \
+            --url "${PRODUCTION_API_URL:-https://menuscanapis.onrender.com}" \
+            --sha "${{ github.sha }}" \
+            --wait 600

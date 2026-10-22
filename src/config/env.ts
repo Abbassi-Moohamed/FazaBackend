@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { z } from "zod";
 
+import { buildInfo } from "./build-info.js";
+
 const DEV_ADMIN_SECRET = "faza-dev-admin-secret-do-not-use-in-prod";
 
 const envSchema = z.object({
@@ -55,6 +57,16 @@ const envSchema = z.object({
   CLOUDFLARE_R2_PUBLIC_URL: z.union([z.string().url(), z.literal("")]).default(""),
 
   LOG_LEVEL: z.string().default("info"),
+
+  /**
+   * Deployed commit identifier. The CI/CD injects it (GitHub Actions exports
+   * GIT_SHA, Render exports RENDER_GIT_COMMIT), so `/health` can report which
+   * build is live and a deploy can be verified against the pushed commit.
+   * The value baked into the artifact by `scripts/write-build-info.mjs` is
+   * used when the host does not provide one at runtime.
+   */
+  GIT_SHA: z.string().default(""),
+  RENDER_GIT_COMMIT: z.string().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -83,6 +95,10 @@ export const env = {
   ...data,
   nodeEnv: data.NODE_ENV,
   apiPrefix: "/api",
+  /** Commit the running build was made from ("unknown" outside CI/CD). */
+  buildSha: data.GIT_SHA || data.RENDER_GIT_COMMIT || buildInfo.commit,
+  /** ISO timestamp of the build that produced the running artifact. */
+  builtAt: buildInfo.builtAt,
   isProduction: data.NODE_ENV === "production",
   isDevelopment: data.NODE_ENV === "development",
   isTest: data.NODE_ENV === "test",
