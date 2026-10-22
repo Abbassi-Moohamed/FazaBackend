@@ -169,6 +169,10 @@ export const tableSessionIdParamsSchema = z.object({
   sessionId: z.string().regex(MONGODB_ID_PATTERN, MONGODB_ID_MESSAGE),
 });
 
+export const tableNumberParamsSchema = z.object({
+  tableNumber: z.coerce.number().int().min(1).max(10000),
+});
+
 export const openServiceShiftBodySchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   type: z.enum(["MORNING", "AFTERNOON", "CUSTOM"]).optional(),

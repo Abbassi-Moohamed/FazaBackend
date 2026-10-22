@@ -32,6 +32,7 @@ import {
   openServiceShiftBodySchema,
   serviceShiftIdParamsSchema,
   tableSessionIdParamsSchema,
+  tableNumberParamsSchema,
 } from "../../validators/admin.validators.js";
 import {
   listMyOrdersController,
@@ -51,6 +52,7 @@ import {
   listTableSessionsController,
   openShiftController,
 } from "../../controllers/admin/coffee-admin/service-shift.controller.js";
+import { closeTableController, listTablesController } from "../../controllers/admin/coffee-admin/table.controller.js";
 import {
   orderIdParamsSchema,
   orderStatusBodySchema,
@@ -116,6 +118,15 @@ coffeeAdminRouter.patch(
   "/table-sessions/:sessionId/close",
   validate({ params: tableSessionIdParamsSchema }),
   closeTableSessionController,
+);
+
+// Table-centric operational view: the backoffice settles tables, whatever
+// the number of client sessions running on them.
+coffeeAdminRouter.get("/tables", listTablesController);
+coffeeAdminRouter.post(
+  "/tables/:tableNumber/close",
+  validate({ params: tableNumberParamsSchema }),
+  closeTableController,
 );
 
 // Explicit resource-name aliases for clients that prefer `/service-shifts`.

@@ -161,6 +161,15 @@ All routes below act on the coffee bound to the token. Supplying another coffee'
 | `GET`    | `/api/v1/admin/my-coffee/table-sessions`                  | `COFFEE_ADMIN` | List table sessions                                 |
 | `GET`    | `/api/v1/admin/my-coffee/table-sessions/:sessionId`       | `COFFEE_ADMIN` | Get a table-session summary                         |
 | `PATCH`  | `/api/v1/admin/my-coffee/table-sessions/:sessionId/close` | `COFFEE_ADMIN` | Close an active table session                       |
+| `GET`    | `/api/v1/admin/my-coffee/tables`                          | `COFFEE_ADMIN` | List the open tables with their orders and bill     |
+| `POST`   | `/api/v1/admin/my-coffee/tables/:tableNumber/close`       | `COFFEE_ADMIN` | Close a table and every session running on it       |
+
+Table view: the backoffice settles tables, not client sessions. A table can
+host several sessions (one per party); `GET /tables` groups them and returns,
+for each table, its orders (with their date) and its bill. Closing a table
+closes all of its sessions at once, and is refused with `409` while an order
+is still pending (`TABLE_PENDING_ORDERS`) or confirmed but unpaid
+(`TABLE_UNPAID_ORDERS`).
 
 Order workflow: `PENDING → CONFIRMED` or `PENDING → REJECTED`. Terminal states
 cannot be changed. Payment is a separate workflow:

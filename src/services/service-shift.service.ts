@@ -201,19 +201,22 @@ export async function finishServiceShift(coffeeId: string, shiftId: string): Pro
     limit: 1000,
   });
   if (openTables.total > 0) {
+    // The admin settles tables, not sessions: the open sessions are grouped
+    // by table before being reported back.
+    const byTable = new Map<number, { orders: number; revenue: number }>();
+    for (const session of openTables.sessions as TableSessionListRow[]) {
+      const totals = sessionTotalsDto(session);
+      const current = byTable.get(session.tableNumber) ?? { orders: 0, revenue: 0 };
+      byTable.set(session.tableNumber, {
+        orders: current.orders + totals.totalOrders,
+        revenue: current.revenue + totals.confirmedRevenue,
+      });
+    }
     throw new ApiError(409, "Some tables must be closed before closing the service.", {
       code: "OPEN_TABLES_REMAIN",
-      tables: (openTables.sessions as TableSessionListRow[]).map((table) => {
-        const orderSummary = Array.isArray(table.orderSummary) ? table.orderSummary : [];
-        return {
-          id: table._id.toString(),
-          tableNumber: table.tableNumber,
-          orders: orderSummary.reduce((total, row) => total + Number(row.count ?? 0), 0),
-          revenue: orderSummary
-            .filter((row) => row._id?.status === "CONFIRMED")
-            .reduce((total, row) => total + Number(row.revenue ?? 0), 0),
-        };
-      }),
+      tables: Array.from(byTable.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([tableNumber, totals]) => ({ tableNumber, orders: totals.orders, revenue: totals.revenue })),
     });
   }
 
