@@ -171,6 +171,13 @@ closes all of its sessions at once, and is refused with `409` while an order
 is still pending (`TABLE_PENDING_ORDERS`) or confirmed but unpaid
 (`TABLE_UNPAID_ORDERS`).
 
+Closing a service is refused with `409` (`OPEN_TABLES_REMAIN`) while a table
+of the coffee is still open — the payload lists the open tables with their
+number of orders and their revenue, so the admin can settle them first. Every
+open table blocks the close, including a table opened outside the service
+shift: an order can only be confirmed while a service is open, so such a table
+would otherwise stay open with orders nobody could settle anymore.
+
 Order workflow: `PENDING → CONFIRMED` or `PENDING → REJECTED`. Terminal states
 cannot be changed. Payment is a separate workflow:
 `CONFIRMED + UNPAID → CONFIRMED + PAID`. Pending and rejected orders cannot be

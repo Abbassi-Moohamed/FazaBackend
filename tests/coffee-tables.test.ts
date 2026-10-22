@@ -170,4 +170,18 @@ describe("coffee tables (backoffice view)", () => {
       { tableNumber: 13, orders: 1, revenue: 0 },
     ]);
   });
+
+  it("blocks the service close on a table opened outside the shift", async () => {
+    // The order is placed while no service is open: its session is bound to
+    // no shift, but the table stays open and must be settled first.
+    await placeOrder(12);
+    await request(app).post("/api/v1/admin/my-coffee/shifts/open").set("Authorization", `Bearer ${token}`).send({});
+
+    const blocked = await request(app)
+      .post("/api/v1/admin/my-coffee/shifts/close")
+      .set("Authorization", `Bearer ${token}`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.details.code).toBe("OPEN_TABLES_REMAIN");
+    expect(blocked.body.details.tables).toEqual([{ tableNumber: 12, orders: 1, revenue: 0 }]);
+  });
 });

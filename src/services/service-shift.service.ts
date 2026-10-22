@@ -195,8 +195,11 @@ export async function finishServiceShift(coffeeId: string, shiftId: string): Pro
     throw new ApiError(409, "Service shift is already closed.");
   }
 
+  // Every table still open in the coffee blocks the close — not only the
+  // sessions bound to this shift: a table opened outside a shift would
+  // otherwise stay open with orders nobody could settle anymore, since
+  // confirming an order requires an open service.
   const openTables = await listTableSessions(coffeeId, {
-    serviceShiftId: shiftId,
     status: "ACTIVE",
     limit: 1000,
   });
