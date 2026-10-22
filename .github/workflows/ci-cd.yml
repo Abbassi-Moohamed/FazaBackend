@@ -76,6 +76,17 @@ jobs:
           npm ci
           npm run db:migrate
 
+      - name: Check the Render credentials
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_API_KEY$RENDER_SERVICE_ID$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::No Render credentials. Add RENDER_API_KEY and RENDER_SERVICE_ID (or RENDER_DEPLOY_HOOK_URL) in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
       - name: Trigger the Render deploy
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
