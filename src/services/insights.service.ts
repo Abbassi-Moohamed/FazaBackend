@@ -2,8 +2,7 @@ import { Types } from "mongoose";
 import {
   aggregateAnalytics,
   getAvailability,
-  getCategoryBreakdown,
-  getDeadStock,
+  getMenuHealth,
   getPlatformCounts,
 } from "../repositories/insights.repository.js";
 import { OrderModel } from "../models/order.model.js";
@@ -203,15 +202,14 @@ export async function getInsights(
       throw new ApiError(404, "Service shift not found.");
     }
   }
-  const [current, previous, availability, platform, categories, deadStock] = await Promise.all([
+  const [current, previous, availability, platform, menuHealth] = await Promise.all([
     aggregateAnalytics(coffeeId, range.from, range.to, bucket, serviceShiftId),
     aggregateAnalytics(coffeeId, range.previousFrom, range.previousTo, bucket, serviceShiftId),
     coffeeId ? getAvailability(coffeeId) : Promise.resolve({ availableItems: 0, unavailableItems: 0 }),
     coffeeId ? Promise.resolve(undefined) : getPlatformCounts(),
-    coffeeId ? getCategoryBreakdown(coffeeId, range.from, range.to, serviceShiftId) : Promise.resolve([]),
     coffeeId
-      ? getDeadStock(coffeeId, range.from, range.to, serviceShiftId)
-      : Promise.resolve({ unsoldItems: 0, items: [] }),
+      ? getMenuHealth(coffeeId, range.from, range.to, serviceShiftId)
+      : Promise.resolve({ categories: [], deadStock: { unsoldItems: 0, items: [] } }),
   ]);
   const currentLegacy = await getLegacyRangeSummary(coffeeId, range.from, range.to);
   const previousLegacy = await getLegacyRangeSummary(coffeeId, range.previousFrom, range.previousTo);
@@ -242,6 +240,7 @@ export async function getInsights(
       kind: "neutral" as const,
     });
   }
+  const { categories, deadStock } = menuHealth;
   const leadingCategory = categories[0];
   if (leadingCategory && leadingCategory.percentageOfRevenue > 0)
     insights.push({

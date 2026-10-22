@@ -266,35 +266,44 @@ async function getSoldQuantities(
   );
 }
 
+/** How many unsold items the payload lists, once sorted by price. */
+const DEAD_STOCK_LIMIT = 12;
+
 /**
- * Revenue and volume per category.
+ * The menu health of the period: the revenue per category and the items
+ * nobody ordered.
+ *
+ * Both views read the same catalog and the same sales, so they are computed
+ * in one pass instead of re-reading the menu twice.
  *
  * The orders only store the item, so the category is read from the current
  * menu: an item deleted since the sale is not attached to any category.
  */
-export async function getCategoryBreakdown(
+export async function getMenuHealth(
   coffeeId: string,
   from: Date,
   to: Date,
   serviceShiftId?: string,
-): Promise<InsightCategory[]> {
+): Promise<{ categories: InsightCategory[]; deadStock: InsightDeadStock }> {
   const catalog = await getCatalog(coffeeId);
-  if (catalog.length === 0) return [];
+  if (catalog.length === 0) return { categories: [], deadStock: { unsoldItems: 0, items: [] } };
   const sold = await getSoldQuantities(coffeeId, from, to, serviceShiftId);
   const byCategory = new Map<string, { categoryName: string; quantitySold: number; revenue: number }>();
+  const unsold: CatalogItem[] = [];
   for (const item of catalog) {
+    const soldItem = sold.get(item.itemId);
     const entry = byCategory.get(item.categoryId) ?? {
       categoryName: item.categoryName,
       quantitySold: 0,
       revenue: 0,
     };
-    const soldItem = sold.get(item.itemId);
     entry.quantitySold += soldItem?.quantity ?? 0;
     entry.revenue += soldItem?.revenue ?? 0;
     byCategory.set(item.categoryId, entry);
+    if ((soldItem?.quantity ?? 0) === 0) unsold.push(item);
   }
   const total = [...byCategory.values()].reduce((sum, category) => sum + category.revenue, 0);
-  return [...byCategory.entries()]
+  const categories = [...byCategory.entries()]
     .map(([categoryId, category]) => ({
       categoryId,
       categoryName: category.categoryName,
@@ -303,29 +312,16 @@ export async function getCategoryBreakdown(
       percentageOfRevenue: total === 0 ? 0 : Number(((category.revenue / total) * 100).toFixed(2)),
     }))
     .sort((a, b) => b.revenue - a.revenue || a.categoryName.localeCompare(b.categoryName));
-}
-
-/** Menu items that were never sold during the period. */
-export async function getDeadStock(
-  coffeeId: string,
-  from: Date,
-  to: Date,
-  serviceShiftId?: string,
-): Promise<InsightDeadStock> {
-  const catalog = await getCatalog(coffeeId);
-  if (catalog.length === 0) return { unsoldItems: 0, items: [] };
-  const sold = await getSoldQuantities(coffeeId, from, to, serviceShiftId);
-  const unsold = catalog.filter((item) => (sold.get(item.itemId)?.quantity ?? 0) === 0);
   const items: InsightDeadStockItem[] = unsold
     .sort((a, b) => b.price - a.price || a.name.localeCompare(b.name))
-    .slice(0, 12)
+    .slice(0, DEAD_STOCK_LIMIT)
     .map((item) => ({
       itemId: item.itemId,
       name: item.name,
       categoryName: item.categoryName,
       price: item.price,
     }));
-  return { unsoldItems: unsold.length, items };
+  return { categories, deadStock: { unsoldItems: unsold.length, items } };
 }
 
 export async function getPlatformCounts(): Promise<{ totalCoffees: number; activeCoffees: number }> {
