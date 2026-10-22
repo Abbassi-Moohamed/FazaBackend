@@ -13,7 +13,7 @@ const APP_PIN = "3219";
 const BUNDLE = {
   coffeeId: "",
   tokens: { app: "", coffee: "" },
-  itemIds: { espresso: "", cappuccino: "", coldBrew: "" },
+  itemIds: { espresso: "", cappuccino: "", coldBrew: "", coffeeEspresso: "", coffeeCappuccino: "" },
 };
 
 describe("insights", () => {
@@ -41,6 +41,16 @@ describe("insights", () => {
     BUNDLE.itemIds.espresso = byName.get("Espresso")!;
     BUNDLE.itemIds.cappuccino = byName.get("Cappuccino")!;
     BUNDLE.itemIds.coldBrew = byName.get("Cold Brew")!;
+
+    // The item names are shared by several coffees: the menu of the coffee
+    // under test is resolved through its own categories.
+    const categoryIds = await ItemCategoryModel.find({ coffeeId: BUNDLE.coffeeId }).distinct("_id").exec();
+    const coffeeItems = await ItemModel.find({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    const coffeeByName = new Map(coffeeItems.map((item) => [item.name, item._id.toString()]));
+    BUNDLE.itemIds.coffeeEspresso = coffeeByName.get("Espresso")!;
+    BUNDLE.itemIds.coffeeCappuccino = coffeeByName.get("Cappuccino")!;
   });
 
   afterEach(async () => {
@@ -208,5 +218,91 @@ describe("insights", () => {
     expect(response.status).toBe(200);
     expect(response.body.data.availability.unavailableItems).toBe(1);
     expect(response.body.data.availability.availableItems).toBe(coffeeItems.length - 1);
+  });
+
+  it("computes the basket size, the rejection rate and the hourly revenue", async () => {
+    const espressoId = BUNDLE.itemIds.coffeeEspresso;
+    const cappuccinoId = BUNDLE.itemIds.coffeeCappuccino;
+
+    await OrderModel.insertMany([
+      {
+        coffeeId: BUNDLE.coffeeId,
+        tableNumber: 2,
+        items: [
+          { itemId: espressoId, name: "Espresso", image: null, quantity: 2, unitPrice: 2.5, subtotal: 5 },
+          { itemId: cappuccinoId, name: "Cappuccino", image: null, quantity: 1, unitPrice: 4.0, subtotal: 4 },
+        ],
+        total: 9,
+        status: "CONFIRMED",
+        createdAt: new Date("2025-03-10T10:30:00.000Z"),
+        updatedAt: new Date("2025-03-10T10:30:00.000Z"),
+      },
+      {
+        coffeeId: BUNDLE.coffeeId,
+        tableNumber: 3,
+        items: [{ itemId: espressoId, name: "Espresso", image: null, quantity: 1, unitPrice: 2.5, subtotal: 2.5 }],
+        total: 2.5,
+        status: "REJECTED",
+        createdAt: new Date("2025-03-11T10:30:00.000Z"),
+        updatedAt: new Date("2025-03-11T10:30:00.000Z"),
+      },
+    ]);
+
+    const response = await request(app)
+      .get("/api/v1/admin/my-coffee/insights")
+      .set("Authorization", `Bearer ${BUNDLE.tokens.coffee}`)
+      .query({ startDate: "2025-03-01", endDate: "2025-03-31" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.kpis.averageItemsPerOrder.current).toBe(3);
+    expect(response.body.data.kpis.averageItemsPerOrder.previous).toBe(0);
+    expect(response.body.data.kpis.rejectionRate.current).toBe(50);
+    expect(response.body.data.kpis.rejectionRate.trend).toBe("up");
+    expect(response.body.data.hourly).toEqual([{ hour: 10, orders: 1, revenue: 9 }]);
+    expect(response.body.data.peakHours).toEqual([{ hour: 10, orders: 1 }]);
+  });
+
+  it("splits the revenue per category and lists the items that never sold", async () => {
+    const espressoId = BUNDLE.itemIds.coffeeEspresso;
+    const cappuccinoId = BUNDLE.itemIds.coffeeCappuccino;
+
+    await OrderModel.create({
+      coffeeId: BUNDLE.coffeeId,
+      tableNumber: 4,
+      items: [
+        { itemId: espressoId, name: "Espresso", image: null, quantity: 2, unitPrice: 2.5, subtotal: 5 },
+        { itemId: cappuccinoId, name: "Cappuccino", image: null, quantity: 1, unitPrice: 4.0, subtotal: 4 },
+      ],
+      total: 9,
+      status: "CONFIRMED",
+      createdAt: new Date("2025-05-05T09:00:00.000Z"),
+      updatedAt: new Date("2025-05-05T09:00:00.000Z"),
+    });
+
+    const response = await request(app)
+      .get("/api/v1/admin/my-coffee/insights")
+      .set("Authorization", `Bearer ${BUNDLE.tokens.coffee}`)
+      .query({ startDate: "2025-05-01", endDate: "2025-05-31" });
+
+    expect(response.status).toBe(200);
+
+    const categories = response.body.data.categories;
+    expect(categories.length).toBeGreaterThan(0);
+    const coffeeCategory = categories.find((category: { categoryName: string }) => category.categoryName === "Cafés");
+    expect(coffeeCategory.quantitySold).toBe(3);
+    expect(coffeeCategory.revenue).toBe(9);
+    expect(coffeeCategory.percentageOfRevenue).toBe(100);
+
+    const catalogSize = await ItemModel.countDocuments({
+      itemCategoryId: { $in: await ItemCategoryModel.find({ coffeeId: BUNDLE.coffeeId }).distinct("_id").exec() },
+    }).exec();
+    expect(response.body.data.deadStock.unsoldItems).toBe(catalogSize - 2);
+    const deadNames = response.body.data.deadStock.items.map((item: { name: string }) => item.name);
+    expect(deadNames).toContain("Cheesecake");
+    expect(deadNames).not.toContain("Espresso");
+
+    const insightIds = response.body.data.insights.map((insight: { id: string }) => insight.id);
+    expect(insightIds).toContain("dead-stock");
+    expect(insightIds).toContain("leading-category");
   });
 });

@@ -1,5 +1,11 @@
 import { Types } from "mongoose";
-import { aggregateAnalytics, getAvailability, getPlatformCounts } from "../repositories/insights.repository.js";
+import {
+  aggregateAnalytics,
+  getAvailability,
+  getCategoryBreakdown,
+  getDeadStock,
+  getPlatformCounts,
+} from "../repositories/insights.repository.js";
 import { OrderModel } from "../models/order.model.js";
 import type { AnalyticsDto, InsightComparison, InsightKpis } from "../types/insights.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -164,7 +170,20 @@ function buildKpis(
       previous.confirmedOrders ? previous.confirmedRevenue / previous.confirmedOrders : 0,
     ),
     itemsSold: comparison(current.itemsSold, previous.itemsSold),
+    averageItemsPerOrder: comparison(
+      current.confirmedOrders ? current.itemsSold / current.confirmedOrders : 0,
+      previous.confirmedOrders ? previous.itemsSold / previous.confirmedOrders : 0,
+    ),
+    rejectionRate: comparison(
+      rate(current.rejectedOrders, current.totalOrders),
+      rate(previous.rejectedOrders, previous.totalOrders),
+    ),
   };
+}
+
+/** Share of a total, in percent. */
+function rate(part: number, total: number): number {
+  return total === 0 ? 0 : (part / total) * 100;
 }
 
 export async function getInsights(
@@ -184,11 +203,15 @@ export async function getInsights(
       throw new ApiError(404, "Service shift not found.");
     }
   }
-  const [current, previous, availability, platform] = await Promise.all([
+  const [current, previous, availability, platform, categories, deadStock] = await Promise.all([
     aggregateAnalytics(coffeeId, range.from, range.to, bucket, serviceShiftId),
     aggregateAnalytics(coffeeId, range.previousFrom, range.previousTo, bucket, serviceShiftId),
     coffeeId ? getAvailability(coffeeId) : Promise.resolve({ availableItems: 0, unavailableItems: 0 }),
     coffeeId ? Promise.resolve(undefined) : getPlatformCounts(),
+    coffeeId ? getCategoryBreakdown(coffeeId, range.from, range.to, serviceShiftId) : Promise.resolve([]),
+    coffeeId
+      ? getDeadStock(coffeeId, range.from, range.to, serviceShiftId)
+      : Promise.resolve({ unsoldItems: 0, items: [] }),
   ]);
   const currentLegacy = await getLegacyRangeSummary(coffeeId, range.from, range.to);
   const previousLegacy = await getLegacyRangeSummary(coffeeId, range.previousFrom, range.previousTo);
@@ -219,6 +242,25 @@ export async function getInsights(
       kind: "neutral" as const,
     });
   }
+  const leadingCategory = categories[0];
+  if (leadingCategory && leadingCategory.percentageOfRevenue > 0)
+    insights.push({
+      id: "leading-category",
+      message: `La catégorie « ${leadingCategory.categoryName} » pèse ${leadingCategory.percentageOfRevenue.toFixed(0)} % du chiffre d'affaires.`,
+      kind: "neutral" as const,
+    });
+  if (deadStock.unsoldItems > 0)
+    insights.push({
+      id: "dead-stock",
+      message: `${deadStock.unsoldItems} article(s) de la carte n'ont pas été vendus sur la période.`,
+      kind: "warning" as const,
+    });
+  if (current.totalOrders > 0 && rate(current.rejectedOrders, current.totalOrders) >= 5)
+    insights.push({
+      id: "rejection-rate",
+      message: `${rate(current.rejectedOrders, current.totalOrders).toFixed(0)} % des commandes ont été refusées.`,
+      kind: "warning" as const,
+    });
   if (availability.unavailableItems > 0)
     insights.push({
       id: "availability",
@@ -247,8 +289,9 @@ export async function getInsights(
     revenueTrend: current.trend,
     orderTrend: current.trend,
     topItems: currentLegacy.topItems.length ? currentLegacy.topItems : current.topItems,
-    categories: [],
+    categories,
     peakHours: current.peakHours,
+    hourly: current.hourly,
     busiestDays: current.busiestDays,
     statuses: (["PENDING", "CONFIRMED", "REJECTED"] as const).map((status) => ({
       status,
@@ -276,9 +319,11 @@ export async function getInsights(
       historicalRateAvailable: false,
     },
     tables: current.tables,
+    deadStock,
     insights,
     limitations: [
-      "Les commandes ne stockent pas le prix normal historique ni la catégorie; les analyses de promotion et de catégorie restent volontairement indisponibles.",
+      "Les commandes ne stockent pas le prix normal historique; les analyses de promotion restent volontairement indisponibles.",
+      "Les catégories sont déduites de la carte actuelle: un article supprimé depuis la vente n'est rattaché à aucune catégorie.",
       "Le taux de disponibilité historique ne peut pas être calculé sans historique des changements.",
       "Le fuseau métier est UTC.",
     ],

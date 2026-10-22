@@ -2,6 +2,7 @@ import { Types, type PipelineStage } from "mongoose";
 import { ItemModel } from "../models/item.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
 import { OrderModel } from "../models/order.model.js";
+import type { InsightCategory, InsightDeadStock, InsightDeadStockItem } from "../types/insights.js";
 
 export interface AnalyticsRangeResult {
   totalOrders: number;
@@ -16,6 +17,7 @@ export interface AnalyticsRangeResult {
   trend: Array<{ bucket: string; revenue: number; orders: number }>;
   topItems: Array<{ itemId: string; name: string; quantitySold: number; revenue: number }>;
   peakHours: Array<{ hour: number; orders: number }>;
+  hourly: Array<{ hour: number; orders: number; revenue: number }>;
   busiestDays: Array<{ dayOfWeek: number; orders: number; revenue: number }>;
   tables: Array<{ tableNumber: number; orders: number; revenue: number }>;
 }
@@ -33,6 +35,7 @@ const zero: AnalyticsRangeResult = {
   trend: [],
   topItems: [],
   peakHours: [],
+  hourly: [],
   busiestDays: [],
   tables: [],
 };
@@ -104,7 +107,13 @@ export async function aggregateAnalytics(
         ],
         hours: [
           { $match: { status: "CONFIRMED" } },
-          { $group: { _id: { $hour: { date: "$createdAt", timezone: "UTC" } }, orders: { $sum: 1 } } },
+          {
+            $group: {
+              _id: { $hour: { date: "$createdAt", timezone: "UTC" } },
+              orders: { $sum: 1 },
+              revenue: { $sum: "$total" },
+            },
+          },
           { $sort: { _id: 1 } },
         ],
         days: [
@@ -162,6 +171,11 @@ export async function aggregateAnalytics(
       }),
     ),
     peakHours: (row.hours ?? []).map((v: { _id: number; orders: number }) => ({ hour: v._id, orders: v.orders })),
+    hourly: (row.hours ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({
+      hour: v._id,
+      orders: v.orders,
+      revenue: Number(v.revenue ?? 0),
+    })),
     busiestDays: (row.days ?? []).map((v: { _id: number; orders: number; revenue: number }) => ({
       dayOfWeek: v._id,
       orders: v.orders,
@@ -185,6 +199,133 @@ export async function getAvailability(coffeeId: string): Promise<{ availableItem
     ItemModel.countDocuments({ itemCategoryId: { $in: categoryIds }, isAvailable: false }).exec(),
   ]);
   return { availableItems, unavailableItems };
+}
+
+/* ---- Menu health: what sells, what never sells ------------------------- */
+
+interface CatalogItem {
+  itemId: string;
+  name: string;
+  categoryId: string;
+  categoryName: string;
+  price: number;
+}
+
+/** Every item of the coffee, with the category it belongs to. */
+async function getCatalog(coffeeId: string): Promise<CatalogItem[]> {
+  const id = objectId(coffeeId);
+  if (!id) return [];
+  const categories = await ItemCategoryModel.find({ coffeeId: id }).select({ _id: 1, name: 1 }).lean().exec();
+  if (categories.length === 0) return [];
+  const categoryNames = new Map(categories.map((category) => [String(category._id), category.name]));
+  const items = await ItemModel.find({ itemCategoryId: { $in: categories.map((category) => category._id) } })
+    .select({ _id: 1, name: 1, itemCategoryId: 1, price: 1 })
+    .lean()
+    .exec();
+  return items.map((item) => ({
+    itemId: String(item._id),
+    name: item.name,
+    categoryId: String(item.itemCategoryId),
+    categoryName: categoryNames.get(String(item.itemCategoryId)) ?? "",
+    price: Number(item.price ?? 0),
+  }));
+}
+
+/** Quantity and revenue sold per item during the period (confirmed orders). */
+async function getSoldQuantities(
+  coffeeId: string,
+  from: Date,
+  to: Date,
+  serviceShiftId?: string,
+): Promise<Map<string, { quantity: number; revenue: number }>> {
+  const id = objectId(coffeeId);
+  if (!id) return new Map();
+  const match: Record<string, unknown> = {
+    coffeeId: id,
+    status: "CONFIRMED",
+    createdAt: { $gte: from, $lt: to },
+  };
+  if (serviceShiftId && Types.ObjectId.isValid(serviceShiftId))
+    match.serviceShiftId = new Types.ObjectId(serviceShiftId);
+  const rows = await OrderModel.aggregate([
+    { $match: match },
+    { $unwind: "$items" },
+    {
+      $group: {
+        _id: "$items.itemId",
+        quantity: { $sum: "$items.quantity" },
+        revenue: { $sum: "$items.subtotal" },
+      },
+    },
+  ]).exec();
+  return new Map(
+    rows.map((row: { _id: Types.ObjectId; quantity: number; revenue: number }) => [
+      String(row._id),
+      { quantity: Number(row.quantity ?? 0), revenue: Number(row.revenue ?? 0) },
+    ]),
+  );
+}
+
+/**
+ * Revenue and volume per category.
+ *
+ * The orders only store the item, so the category is read from the current
+ * menu: an item deleted since the sale is not attached to any category.
+ */
+export async function getCategoryBreakdown(
+  coffeeId: string,
+  from: Date,
+  to: Date,
+  serviceShiftId?: string,
+): Promise<InsightCategory[]> {
+  const catalog = await getCatalog(coffeeId);
+  if (catalog.length === 0) return [];
+  const sold = await getSoldQuantities(coffeeId, from, to, serviceShiftId);
+  const byCategory = new Map<string, { categoryName: string; quantitySold: number; revenue: number }>();
+  for (const item of catalog) {
+    const entry = byCategory.get(item.categoryId) ?? {
+      categoryName: item.categoryName,
+      quantitySold: 0,
+      revenue: 0,
+    };
+    const soldItem = sold.get(item.itemId);
+    entry.quantitySold += soldItem?.quantity ?? 0;
+    entry.revenue += soldItem?.revenue ?? 0;
+    byCategory.set(item.categoryId, entry);
+  }
+  const total = [...byCategory.values()].reduce((sum, category) => sum + category.revenue, 0);
+  return [...byCategory.entries()]
+    .map(([categoryId, category]) => ({
+      categoryId,
+      categoryName: category.categoryName,
+      quantitySold: category.quantitySold,
+      revenue: Number(category.revenue.toFixed(2)),
+      percentageOfRevenue: total === 0 ? 0 : Number(((category.revenue / total) * 100).toFixed(2)),
+    }))
+    .sort((a, b) => b.revenue - a.revenue || a.categoryName.localeCompare(b.categoryName));
+}
+
+/** Menu items that were never sold during the period. */
+export async function getDeadStock(
+  coffeeId: string,
+  from: Date,
+  to: Date,
+  serviceShiftId?: string,
+): Promise<InsightDeadStock> {
+  const catalog = await getCatalog(coffeeId);
+  if (catalog.length === 0) return { unsoldItems: 0, items: [] };
+  const sold = await getSoldQuantities(coffeeId, from, to, serviceShiftId);
+  const unsold = catalog.filter((item) => (sold.get(item.itemId)?.quantity ?? 0) === 0);
+  const items: InsightDeadStockItem[] = unsold
+    .sort((a, b) => b.price - a.price || a.name.localeCompare(b.name))
+    .slice(0, 12)
+    .map((item) => ({
+      itemId: item.itemId,
+      name: item.name,
+      categoryName: item.categoryName,
+      price: item.price,
+    }));
+  return { unsoldItems: unsold.length, items };
 }
 
 export async function getPlatformCounts(): Promise<{ totalCoffees: number; activeCoffees: number }> {
