@@ -16,6 +16,12 @@ import {
   listMyCategoryItemsController,
   updateMyItemController,
 } from "../../controllers/admin/coffee-admin/item.controller.js";
+import {
+  archiveMyOfferController,
+  createMyOfferController,
+  listMyOffersController,
+  updateMyOfferController,
+} from "../../controllers/admin/offer.controller.js";
 import { requireAdmin, requireCoffeeAdmin } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import {
@@ -25,6 +31,9 @@ import {
   insightsQuerySchema,
   itemBodySchema,
   itemIdParamsSchema,
+  offerBodySchema,
+  offerIdParamsSchema,
+  updateOfferBodySchema,
   updateCoffeeBodySchema,
   updateItemBodySchema,
   listServiceShiftsQuerySchema,
@@ -192,3 +201,13 @@ coffeeAdminRouter.patch(
   updateMyItemController,
 );
 coffeeAdminRouter.delete("/items/:itemId", validate({ params: itemIdParamsSchema }), deleteMyItemController);
+
+// Daily offers (always scoped to the admin's own coffee).
+coffeeAdminRouter.get("/offers", listMyOffersController);
+coffeeAdminRouter.post("/offers", validate({ body: offerBodySchema }), createMyOfferController);
+coffeeAdminRouter.patch(
+  "/offers/:offerId",
+  validate({ params: offerIdParamsSchema, body: updateOfferBodySchema }),
+  updateMyOfferController,
+);
+coffeeAdminRouter.delete("/offers/:offerId", validate({ params: offerIdParamsSchema }), archiveMyOfferController);

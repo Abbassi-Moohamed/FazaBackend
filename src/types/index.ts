@@ -101,7 +101,9 @@ export interface CoffeeUpdateInput {
 }
 
 export type { OrderStatus } from "../models/order.model.js";
-export type { OrderDto, OrderItemDto } from "./order.js";
+export type { OrderDto, OrderItemDto, OrderOfferDto, OrderOfferLineDto } from "./order.js";
+export type { AdminOfferDto, FeaturedOfferDto, OfferLineDto } from "./offer.js";
+export type { OfferStatus } from "../models/offer.model.js";
 export type {
   AnalyticsDto,
   InsightComparison,

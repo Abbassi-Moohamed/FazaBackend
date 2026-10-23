@@ -17,14 +17,44 @@ const orderItemSchema = new Schema(
   { _id: false },
 );
 
+/** One component of a purchased bundle, snapshotted for the kitchen. */
+const orderOfferLineSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 1 },
+  },
+  { _id: false },
+);
+
+/**
+ * A daily offer purchased at its bundle price. The offer's name, price and
+ * contents are snapshotted: later edits to the menu or the offer must never
+ * rewrite an order that was already placed.
+ */
+const orderOfferSchema = new Schema(
+  {
+    offerId: { type: Schema.Types.ObjectId, ref: "Offer", required: true },
+    name: { type: String, required: true, trim: true },
+    image: { type: String, default: null },
+    quantity: { type: Number, required: true, min: 1 },
+    unitPrice: { type: Number, required: true, min: 0 },
+    subtotal: { type: Number, required: true, min: 0 },
+    lines: { type: [orderOfferLineSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     coffeeId: { type: Schema.Types.ObjectId, ref: "Coffee", required: true, index: true },
     tableNumber: { type: Number, required: true, min: 1, max: 10000 },
     items: {
       type: [orderItemSchema],
-      required: true,
-      validate: [(value: unknown[]) => value.length > 0, "An order must contain at least one item."],
+      default: [],
+    },
+    offers: {
+      type: [orderOfferSchema],
+      default: [],
     },
     total: { type: Number, required: true, min: 0 },
     status: { type: String, enum: ORDER_STATUSES, default: "PENDING", index: true },
@@ -43,6 +73,14 @@ orderSchema.index({ coffeeId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ coffeeId: 1, paymentStatus: 1, createdAt: -1 });
 orderSchema.index({ coffeeId: 1, serviceShiftId: 1, createdAt: -1 });
 orderSchema.index({ tableSessionId: 1, createdAt: -1 });
+
+// An order is either a basket of items, a set of offers, or both. Validated at
+// the document level because neither array alone is mandatory.
+orderSchema.pre("validate", function () {
+  if (this.items.length === 0 && this.offers.length === 0) {
+    this.invalidate("items", "An order must contain at least one item or offer.");
+  }
+});
 
 export type Order = InferSchemaType<typeof orderSchema> & { _id: Types.ObjectId };
 export const OrderModel = model<Order>("Order", orderSchema);

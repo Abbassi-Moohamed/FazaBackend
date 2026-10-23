@@ -12,6 +12,13 @@ import {
 } from "../repositories/order.repository.js";
 import { findCurrentServiceShift } from "../repositories/service-shift.repository.js";
 import {
+  consumeOfferStock,
+  findItemsForOfferLines,
+  findPurchasableOffer,
+  restoreOfferStock,
+  type OfferRow,
+} from "../repositories/offer.repository.js";
+import {
   createTableSession,
   assignTableSessionToServiceShift,
   findTableSessionByToken,
@@ -36,6 +43,15 @@ function dto(order: Order, sessionToken?: string): OrderDto {
     coffeeId: order.coffeeId.toString(),
     tableNumber: order.tableNumber,
     items: order.items.map((item) => ({ ...item, itemId: item.itemId.toString(), image: item.image ?? null })),
+    offers: (order.offers ?? []).map((offer) => ({
+      offerId: offer.offerId.toString(),
+      name: offer.name,
+      image: offer.image ?? null,
+      quantity: offer.quantity,
+      unitPrice: offer.unitPrice,
+      subtotal: offer.subtotal,
+      lines: (offer.lines ?? []).map((line) => ({ name: line.name, quantity: line.quantity })),
+    })),
     total: order.total,
     status: order.status,
     paymentStatus: order.paymentStatus ?? "UNPAID",
@@ -77,47 +93,161 @@ async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number
   return { session, sessionToken, serviceShiftId: activeShift?._id ?? null };
 }
 
+interface ItemSnapshot {
+  itemId: Types.ObjectId;
+  name: string;
+  image: string | null;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+interface OfferSnapshot {
+  offerId: Types.ObjectId;
+  name: string;
+  image: string | null;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  lines: { name: string; quantity: number }[];
+}
+
+interface ReservedStock {
+  offerId: Types.ObjectId;
+  quantity: number;
+}
+
+async function releaseReservedStock(reserved: ReservedStock[]): Promise<void> {
+  await Promise.allSettled(reserved.map((entry) => restoreOfferStock(entry.offerId, entry.quantity)));
+}
+
 export async function placeOrder(input: {
   coffeeSlug: string;
   tableNumber: number;
   items: { itemId: string; quantity: number }[];
+  offers?: { offerId: string; quantity: number }[];
   sessionToken?: string;
 }): Promise<OrderDto> {
   const coffee = await CoffeeModel.findOne({ slug: input.coffeeSlug }).select({ _id: 1 }).lean().exec();
   if (!coffee) throw new ApiError(404, "Coffee not found");
+  const coffeeId = coffee._id.toString();
+  const now = new Date();
 
-  const menuItems = await findMenuItemsForCoffee(
-    coffee._id.toString(),
-    input.items.map((item) => item.itemId),
-  );
-  const byId = new Map(menuItems.map((item) => [item._id.toString(), item]));
-  if (menuItems.length !== input.items.length)
-    throw new ApiError(400, "One or more items do not belong to this coffee.");
+  let itemsSubtotal = 0;
+  const itemSnapshots: ItemSnapshot[] = [];
+  if (input.items.length > 0) {
+    const menuItems = await findMenuItemsForCoffee(
+      coffeeId,
+      input.items.map((item) => item.itemId),
+    );
+    const byId = new Map(menuItems.map((item) => [item._id.toString(), item]));
+    if (menuItems.length !== input.items.length)
+      throw new ApiError(400, "One or more items do not belong to this coffee.");
 
-  let subtotal = 0;
-  const snapshots = input.items.map(({ itemId, quantity }) => {
-    const item = byId.get(itemId);
-    if (!item) throw new ApiError(400, "One or more items do not belong to this coffee.");
-    if (item.isAvailable === false) throw new ApiError(409, `Item "${item.name}" is not available.`);
-    const unitPrice = item.promotion ?? item.price;
-    const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
-    subtotal += lineTotal;
-    return { itemId: item._id, name: item.name, image: item.image ?? null, quantity, unitPrice, subtotal: lineTotal };
-  });
-  subtotal = Math.round(subtotal * 100) / 100;
+    for (const { itemId, quantity } of input.items) {
+      const item = byId.get(itemId);
+      if (!item) throw new ApiError(400, "One or more items do not belong to this coffee.");
+      if (item.isAvailable === false) throw new ApiError(409, `Item "${item.name}" is not available.`);
+      const unitPrice = item.promotion ?? item.price;
+      const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
+      itemsSubtotal += lineTotal;
+      itemSnapshots.push({
+        itemId: item._id,
+        name: item.name,
+        image: item.image ?? null,
+        quantity,
+        unitPrice,
+        subtotal: lineTotal,
+      });
+    }
+    itemsSubtotal = Math.round(itemsSubtotal * 100) / 100;
+  }
+
+  // Offers are fully validated (window, active, components available) before
+  // any stock is reserved, so a stale basket fails without side effects.
+  const requestedOffers = input.offers ?? [];
+  const offerSnapshots: OfferSnapshot[] = [];
+  let offersSubtotal = 0;
+  if (requestedOffers.length > 0) {
+    const resolved: { offer: OfferRow; quantity: number }[] = [];
+    for (const entry of requestedOffers) {
+      const offer = await findPurchasableOffer(coffeeId, entry.offerId, now);
+      if (!offer) {
+        throw new ApiError(409, "One or more offers are no longer available.", { code: "OFFER_UNAVAILABLE" });
+      }
+      resolved.push({ offer, quantity: entry.quantity });
+    }
+
+    const componentItems = await findItemsForOfferLines(
+      coffeeId,
+      resolved.flatMap(({ offer }) => offer.lines.map((line) => line.itemId.toString())),
+    );
+    const componentById = new Map(componentItems.map((item) => [item._id.toString(), item]));
+
+    for (const { offer, quantity } of resolved) {
+      if (offer.stock < quantity) {
+        throw new ApiError(409, `Offer "${offer.name}" is out of stock.`, { code: "OFFER_SOLD_OUT" });
+      }
+      const lines = offer.lines.map((line) => {
+        const component = componentById.get(line.itemId.toString());
+        if (!component || component.isAvailable === false) {
+          throw new ApiError(409, `Offer "${offer.name}" is no longer available.`, {
+            code: "OFFER_UNAVAILABLE",
+          });
+        }
+        return { name: component.name, quantity: line.quantity };
+      });
+      const subtotal = Math.round(offer.price * quantity * 100) / 100;
+      offersSubtotal += subtotal;
+      offerSnapshots.push({
+        offerId: offer._id,
+        name: offer.name,
+        image: offer.image ?? null,
+        quantity,
+        unitPrice: offer.price,
+        subtotal,
+        lines,
+      });
+    }
+    offersSubtotal = Math.round(offersSubtotal * 100) / 100;
+  }
+
+  const total = Math.round((itemsSubtotal + offersSubtotal) * 100) / 100;
   const session = await resolveTableSession(coffee._id, input.tableNumber, input.sessionToken);
   if (session.serviceShiftId) {
-    await assignTableSessionToServiceShift(coffee._id.toString(), session.session._id, session.serviceShiftId);
+    await assignTableSessionToServiceShift(coffeeId, session.session._id, session.serviceShiftId);
   }
-  const order = await createOrder({
-    coffeeId: coffee._id,
-    tableNumber: input.tableNumber,
-    items: snapshots,
-    total: subtotal,
-    status: "PENDING",
-    tableSessionId: session.session._id,
-    serviceShiftId: session.serviceShiftId,
-  });
+
+  // Reserve the bundles atomically, one by one. Without MongoDB transactions
+  // (standalone deployments), a failed reservation restores everything already
+  // taken; the same compensation runs if the order write fails afterwards.
+  const reserved: ReservedStock[] = [];
+  for (const snapshot of offerSnapshots) {
+    const updated = await consumeOfferStock(coffeeId, snapshot.offerId.toString(), snapshot.quantity, now);
+    if (!updated) {
+      await releaseReservedStock(reserved);
+      throw new ApiError(409, `Offer "${snapshot.name}" is out of stock.`, { code: "OFFER_SOLD_OUT" });
+    }
+    reserved.push({ offerId: snapshot.offerId, quantity: snapshot.quantity });
+  }
+
+  let order: Awaited<ReturnType<typeof createOrder>>;
+  try {
+    order = await createOrder({
+      coffeeId: coffee._id,
+      tableNumber: input.tableNumber,
+      items: itemSnapshots,
+      offers: offerSnapshots,
+      total,
+      status: "PENDING",
+      tableSessionId: session.session._id,
+      serviceShiftId: session.serviceShiftId,
+    });
+  } catch (error) {
+    await releaseReservedStock(reserved);
+    throw error;
+  }
+
   await touchTableSession(session.session._id);
   const result = dto(order.toObject(), session.sessionToken);
   publishOrderCreated(result);
@@ -190,6 +320,10 @@ export async function changeOrderStatus(coffeeId: string, orderId: string, nextS
   }
   const updated = await updateOrderStatus(coffeeId, orderId, nextStatus, new Date(), activeService?._id);
   if (!updated) throw new ApiError(404, "Order not found");
+  // Rejecting a pending order releases the bundles it had reserved.
+  if (nextStatus === "REJECTED" && current.offers?.length) {
+    await releaseReservedStock(current.offers.map((offer) => ({ offerId: offer.offerId, quantity: offer.quantity })));
+  }
   if (nextStatus === "CONFIRMED" && activeService && current.tableSessionId) {
     await assignTableSessionToServiceShift(coffeeId, current.tableSessionId, activeService._id);
   }

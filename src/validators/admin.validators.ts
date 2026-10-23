@@ -192,3 +192,79 @@ export const listTableSessionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+/* ---- Daily offers -------------------------------------------------------- */
+
+const offerDateSchema = z
+  .string()
+  .trim()
+  .min(1, "Date is required.")
+  .max(40, "Date must be at most 40 characters.")
+  .refine((value) => !Number.isNaN(Date.parse(value)), "Date must be a valid ISO date.");
+
+const offerLineBodySchema = z.object({
+  itemId: z.string().regex(MONGODB_ID_PATTERN, MONGODB_ID_MESSAGE),
+  quantity: z.number().int().min(1, "Quantity must be at least 1.").max(99, "Quantity must be at most 99."),
+});
+
+const offerLinesSchema = z
+  .array(offerLineBodySchema)
+  .min(1, "An offer must contain at least one item.")
+  .max(20, "An offer can contain at most 20 items.")
+  .refine((lines) => new Set(lines.map((line) => line.itemId)).size === lines.length, {
+    message: "An item can appear only once in an offer.",
+    path: ["lines"],
+  });
+
+export const offerIdParamsSchema = z.object({
+  offerId: z.string().regex(MONGODB_ID_PATTERN, MONGODB_ID_MESSAGE),
+});
+
+export const offerBodySchema = z
+  .object({
+    name: z.string().trim().min(1, "Offer name is required.").max(120, "Offer name must be at most 120 characters."),
+    description: z.string().trim().max(500, "Offer description must be at most 500 characters.").optional(),
+    price: z.number().finite().positive("Offer price must be greater than zero."),
+    stock: z.number().int().min(0, "Stock cannot be negative.").max(9999, "Stock must be at most 9999."),
+    lines: offerLinesSchema,
+    image: z.url("image must be a valid URL.").nullable().optional(),
+    startAt: offerDateSchema.nullable().optional(),
+    endAt: offerDateSchema.nullable().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine(
+    (value) => !value.startAt || !value.endAt || new Date(value.startAt).getTime() < new Date(value.endAt).getTime(),
+    {
+      message: "The end date must be after the start date.",
+      path: ["endAt"],
+    },
+  );
+
+export const updateOfferBodySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Offer name is required.")
+      .max(120, "Offer name must be at most 120 characters.")
+      .optional(),
+    description: z.string().trim().max(500, "Offer description must be at most 500 characters.").optional(),
+    price: z.number().finite().positive("Offer price must be greater than zero.").optional(),
+    stock: z.number().int().min(0, "Stock cannot be negative.").max(9999, "Stock must be at most 9999.").optional(),
+    lines: offerLinesSchema.optional(),
+    image: z.url("image must be a valid URL.").nullable().optional(),
+    startAt: offerDateSchema.nullable().optional(),
+    endAt: offerDateSchema.nullable().optional(),
+    isActive: z.boolean().optional(),
+    archived: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length >= 1, {
+    message: "Provide at least one field to update.",
+  })
+  .refine(
+    (value) => !value.startAt || !value.endAt || new Date(value.startAt).getTime() < new Date(value.endAt).getTime(),
+    {
+      message: "The end date must be after the start date.",
+      path: ["endAt"],
+    },
+  );

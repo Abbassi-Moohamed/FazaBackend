@@ -20,6 +20,7 @@ import {
   listItemsOfCategory,
   updateItemOwnedByCoffee,
 } from "../../repositories/admin/item.repository.js";
+import { detachItemFromOffers } from "../../repositories/offer.repository.js";
 import { attachImageToEntity, deleteImage, resolveImageForEntity } from "../image.service.js";
 import type {
   AdminCategoryDto,
@@ -365,6 +366,9 @@ export async function deleteItem(coffeeId: string, itemId: string): Promise<{ id
 
   const deleted = await deleteItemOwnedByCoffee(coffeeId, itemId);
   if (!deleted) throw new ApiError(404, "Item not found");
+
+  // An offer must never keep pointing at an item that no longer exists.
+  await detachItemFromOffers(coffeeId, itemId);
 
   if (existing.imageId) await deleteImage(existing.imageId, { coffeeId, itemId });
   return { id: itemId };

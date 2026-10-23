@@ -66,7 +66,7 @@ export async function updateOrderStatus(
   serviceShiftId?: Types.ObjectId,
 ) {
   return OrderModel.findOneAndUpdate(
-    { _id: orderId, coffeeId, ...(status === "CONFIRMED" ? { status: "PENDING" } : {}) },
+    { _id: orderId, coffeeId, ...(status === "CONFIRMED" || status === "REJECTED" ? { status: "PENDING" } : {}) },
     {
       $set: {
         status,

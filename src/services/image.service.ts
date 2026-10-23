@@ -3,6 +3,7 @@ import { CoffeeModel } from "../models/coffee.model.js";
 import { ImageModel } from "../models/image.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
 import { ItemModel } from "../models/item.model.js";
+import { OfferModel } from "../models/offer.model.js";
 import type { AdminContext, AdminImageDto } from "../types/index.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
@@ -111,7 +112,7 @@ export async function attachImageToEntity(imageId: string | null, coffeeId: stri
 /** True when another entity (or the same one in `exclude`) still references the image. */
 async function isImageStillReferenced(
   imageId: string,
-  exclude?: { coffeeId?: string; itemId?: string; categoryId?: string },
+  exclude?: { coffeeId?: string; itemId?: string; categoryId?: string; offerId?: string },
 ): Promise<boolean> {
   const items = await ItemModel.find({ imageId }).select({ _id: 1 }).lean().exec();
   for (const item of items) {
@@ -132,6 +133,11 @@ async function isImageStillReferenced(
     if (category._id.toString() !== exclude?.categoryId) return true;
   }
 
+  const offers = await OfferModel.find({ imageId }).select({ _id: 1 }).lean().exec();
+  for (const offer of offers) {
+    if (offer._id.toString() !== exclude?.offerId) return true;
+  }
+
   return false;
 }
 
@@ -147,6 +153,9 @@ async function isImageUsedByCoffee(imageId: string, coffeeId: string): Promise<b
 
   const categories = await ItemCategoryModel.exists({ imageId, coffeeId });
   if (categories) return true;
+
+  const offer = await OfferModel.exists({ imageId, coffeeId });
+  if (offer) return true;
 
   const items = await ItemModel.find({ imageId }).select({ itemCategoryId: 1 }).lean().exec();
   if (items.length === 0) return false;
@@ -177,7 +186,7 @@ async function assertCanManageImage(imageId: string, admin: AdminContext): Promi
  */
 export async function deleteImage(
   imageId: string,
-  exclude?: { coffeeId?: string; itemId?: string; categoryId?: string },
+  exclude?: { coffeeId?: string; itemId?: string; categoryId?: string; offerId?: string },
 ): Promise<void> {
   if (!imageId) return;
   if (await isImageStillReferenced(imageId, exclude)) return;

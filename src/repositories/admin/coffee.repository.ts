@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { CoffeeModel } from "../../models/coffee.model.js";
 import { ItemCategoryModel } from "../../models/item-category.model.js";
 import { ItemModel } from "../../models/item.model.js";
+import { OfferModel } from "../../models/offer.model.js";
 
 /**
  * Application-admin coffee data access. Never returns `adminPinHash` — every
@@ -184,6 +185,8 @@ export async function deleteCoffeeWithDependencies(id: string): Promise<boolean>
     await ItemModel.deleteMany({ itemCategoryId: { $in: categoryIds } });
     await ItemCategoryModel.deleteMany({ _id: { $in: categoryIds } });
   }
+
+  await OfferModel.deleteMany({ coffeeId });
 
   const result = await CoffeeModel.deleteOne({ _id: coffeeId });
   return result.deletedCount > 0;

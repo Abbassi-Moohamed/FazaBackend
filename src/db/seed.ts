@@ -6,6 +6,7 @@ import { connectDatabase, disconnectDatabase } from "./index.js";
 import { CoffeeModel } from "../models/coffee.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
 import { ItemModel } from "../models/item.model.js";
+import { OfferModel } from "../models/offer.model.js";
 import { OrderModel } from "../models/order.model.js";
 import { ServiceShiftModel } from "../models/service-shift.model.js";
 import { TableSessionModel } from "../models/table-session.model.js";
@@ -28,6 +29,7 @@ export async function seedDatabase(): Promise<{ coffees: number; categories: num
   await OrderModel.deleteMany({});
   await TableSessionModel.deleteMany({});
   await ServiceShiftModel.deleteMany({});
+  await OfferModel.deleteMany({});
   await ItemModel.deleteMany({});
   await ItemCategoryModel.deleteMany({});
   await CoffeeModel.deleteMany({});
