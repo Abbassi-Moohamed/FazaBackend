@@ -10,13 +10,11 @@ export const createOrderBodySchema = z
     tableNumber: z.coerce.number().int().min(1).max(10000),
     items: z
       .array(z.object({ itemId: objectId, quantity: z.number().int().min(1).max(99) }))
-      .min(1)
       .max(50)
       .optional()
       .default([]),
     offers: z
       .array(z.object({ offerId: objectId, quantity: z.number().int().min(1).max(99) }))
-      .min(1)
       .max(20)
       .optional()
       .default([]),

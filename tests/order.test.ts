@@ -22,6 +22,24 @@ describe("visitor ordering", () => {
   beforeEach(() => seedDatabase());
   afterAll(async () => teardownTestDatabase(database));
 
+  it("accepts an item-only order that explicitly sends an empty offers array", async () => {
+    const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
+    const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+
+    const response = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 1,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+        offers: [],
+      });
+    expect(response.status).toBe(201);
+  });
+
   it("checks ownership, availability and calculates a promotional total server-side", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();

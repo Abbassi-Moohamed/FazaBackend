@@ -44,9 +44,9 @@ export const pinBodySchema = z.object({
 
 export const createCoffeeBodySchema = z.object({
   name: z.string().trim().min(1, "Coffee name is required.").max(120, "Coffee name must be at most 120 characters."),
-  logo: z.url("logo must be a valid URL."),
+  slug: coffeeSlugSchema,
+  logo: z.url("logo must be a valid URL.").optional(),
   cover: z.url("cover must be a valid URL.").optional(),
-  slug: coffeeSlugSchema.optional(),
 });
 
 const updateCoffeeFields = z.object({
@@ -65,6 +65,26 @@ const updateCoffeeFields = z.object({
 export const updateCoffeeBodySchema = updateCoffeeFields.refine((value) => Object.keys(value).length >= 1, {
   message: "Provide at least one field to update.",
 });
+
+export const updateMyCoffeeBodySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Coffee name is required.")
+      .max(120, "Coffee name must be at most 120 characters.")
+      .optional(),
+    logo: z.url("logo must be a valid URL.").optional(),
+    cover: z.url("cover must be a valid URL.").optional(),
+    /**
+     * Accepted only so the service can reject an actual change: a coffee admin
+     * may not rename their own slug. Sending the current slug is a no-op.
+     */
+    slug: coffeeSlugSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length >= 1, {
+    message: "Provide at least one field to update.",
+  });
 
 export const categoryBodySchema = z.object({
   name: z.string().trim().min(1, "Category name is required.").max(80, "Category name must be at most 80 characters."),

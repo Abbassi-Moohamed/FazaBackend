@@ -2,7 +2,6 @@ import { hashPin, verifyPin } from "../../auth/pin.js";
 import {
   findAdminCoffeeById,
   findCoffeeWithPinHashById,
-  isCoffeeSlugTaken,
   updateAdminCoffee,
   updateCoffeePinHash,
 } from "../../repositories/admin/coffee.repository.js";
@@ -125,12 +124,6 @@ function isDuplicateKeyError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: number }).code === 11000;
 }
 
-async function assertMySlugAvailable(slug: string, excludeId: string): Promise<void> {
-  if (await isCoffeeSlugTaken(slug, excludeId)) {
-    throw new ApiError(409, "Slug is already taken");
-  }
-}
-
 export async function getMyCoffee(coffeeId: string): Promise<AdminCoffeeDto> {
   const coffee = await findAdminCoffeeById(coffeeId);
   if (!coffee) throw new ApiError(404, "Coffee not found");
@@ -147,18 +140,19 @@ export async function getMyCoffee(coffeeId: string): Promise<AdminCoffeeDto> {
 }
 
 export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput): Promise<AdminCoffeeDto> {
-  if (input.slug !== undefined) {
-    await assertMySlugAvailable(input.slug, coffeeId);
-  }
-
   const existing = await findAdminCoffeeById(coffeeId);
   if (!existing) throw new ApiError(404, "Coffee not found");
+
+  // The slug is the coffee's public identity (QR links point at it), so a
+  // coffee admin can never change it — only the app admin can.
+  if (input.slug !== undefined && input.slug !== existing.slug) {
+    throw new ApiError(400, "The coffee slug cannot be changed.");
+  }
 
   const admin: AdminContext = { role: "COFFEE_ADMIN", coffeeId };
   const patch: Partial<{
     name: string;
     logo: string;
-    slug: string;
     logoImageId: string | null;
     cover: string | null;
     coverImageId: string | null;
@@ -174,7 +168,6 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
     patch.cover = resolved.url;
     patch.coverImageId = resolved.imageId;
   }
-  if (input.slug !== undefined) patch.slug = input.slug;
 
   const updated = await updateAdminCoffee(coffeeId, patch);
   if (!updated) throw new ApiError(404, "Coffee not found");
