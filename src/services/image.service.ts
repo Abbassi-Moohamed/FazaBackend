@@ -9,11 +9,11 @@ import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import {
   deleteCloudflareImage,
-  inspectMedia,
   isManagedDeliveryUrl,
   mediaTypeFromImageId,
   mimeTypeFromImageId,
   parseImageIdFromDeliveryUrl,
+  prepareMediaForUpload,
   sanitizeFilename,
   uploadCloudflareImage,
 } from "./cloudflare-images.service.js";
@@ -44,23 +44,24 @@ export async function uploadAdminImage(input: {
   originalName: string;
   admin: AdminContext;
 }): Promise<AdminImageDto> {
-  const inspection = inspectMedia({
+  const prepared = await prepareMediaForUpload({
     buffer: input.buffer,
     contentType: input.contentType,
-    originalname: input.originalName,
+    originalName: input.originalName,
   });
+  const inspection = prepared.inspection;
 
   const uploaded = await uploadCloudflareImage({
-    buffer: input.buffer,
-    contentType: input.contentType,
-    filename: sanitizeFilename(input.originalName),
+    buffer: prepared.buffer,
+    contentType: prepared.contentType,
+    filename: sanitizeFilename(prepared.originalName),
   });
 
   const isCoffeeAdmin = input.admin.role === "COFFEE_ADMIN";
   const doc = await ImageModel.create({
     imageId: uploaded.imageId,
     url: uploaded.url,
-    filename: sanitizeFilename(input.originalName) || null,
+    filename: sanitizeFilename(prepared.originalName) || null,
     mediaType: inspection.mediaType,
     mimeType: inspection.mimeType,
     durationMs: inspection.durationMs,

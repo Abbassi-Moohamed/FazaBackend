@@ -71,9 +71,7 @@ migrations.push({
       });
     }
 
-    const cursor = db
-      .collection("items")
-      .find({ $or: [{ media: { $exists: false } }, { media: { $size: 0 } }] });
+    const cursor = db.collection("items").find({ $or: [{ media: { $exists: false } }, { media: { $size: 0 } }] });
     for await (const item of cursor) {
       const image = typeof item.image === "string" && item.image.length > 0 ? item.image : null;
       await db.collection("items").updateOne(
@@ -159,10 +157,12 @@ migrations.push({
 
     // DESTRUCTIVE: removes the gallery and its metadata.
     await db.collection("items").updateMany({}, { $unset: { media: "" } });
-    await db.collection("images").updateMany(
-      {},
-      { $unset: { mediaType: "", mimeType: "", durationMs: "", sizeBytes: "" } },
-    );
-    await db.collection("items").dropIndex("idx_items_media_image_id").catch(() => undefined);
+    await db
+      .collection("images")
+      .updateMany({}, { $unset: { mediaType: "", mimeType: "", durationMs: "", sizeBytes: "" } });
+    await db
+      .collection("items")
+      .dropIndex("idx_items_media_image_id")
+      .catch(() => undefined);
   },
 });

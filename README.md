@@ -2,7 +2,7 @@
 
 Express 5 + Mongoose API for the Faza QR-menu platform. It serves the public
 menu and visitor ordering flow, two PIN-authenticated backoffice roles,
-table-session/service-shift operations, daily offers, image uploads, analytics,
+table-session/service-shift operations, daily offers, media uploads, analytics,
 and Socket.IO order updates.
 
 Current, code-grounded documentation lives in [`docs/`](docs/README.md).
@@ -14,6 +14,7 @@ Current, code-grounded documentation lives in [`docs/`](docs/README.md).
 - Zod 4, jsonwebtoken, Helmet, CORS, pino / pino-http
 - Socket.IO 4
 - Multer + AWS S3 SDK against Cloudflare R2
+- ffmpeg-static for server-side video trimming
 
 ## Local development
 

@@ -43,11 +43,7 @@ interface SocketData {
 type PublicOrder = Omit<OrderDto, "sessionToken">;
 
 interface ClientToServerEvents {
-  "order:subscribe": (
-    orderId: string,
-    sessionToken?: string,
-    ack?: (result: { joined: boolean }) => void,
-  ) => void;
+  "order:subscribe": (orderId: string, sessionToken?: string, ack?: (result: { joined: boolean }) => void) => void;
   "order:unsubscribe": (orderId: string) => void;
   "session:subscribe": (sessionToken: string, ack?: (result: { joined: boolean }) => void) => void;
   "session:unsubscribe": (sessionToken: string) => void;

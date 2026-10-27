@@ -32,6 +32,11 @@ These are findings from code inspection, recorded rather than fixed.
   cascading deletes use deterministic ordering.
 - **Basic health/metrics**: liveness and readiness exist, but there is no
   detailed metrics endpoint.
+- **Video trimming is local**: over-long videos are re-encoded by the bundled
+  `ffmpeg-static` binary (GPL-3.0-or-later). The host must allow the install
+  script to download the binary and provide a writable temp directory; if the
+  binary is missing, over-long uploads return 503 while short videos still work.
+  Offloading the encode to a queue/worker is the scalable next step.
 
 ## Documentation
 

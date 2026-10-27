@@ -7,6 +7,8 @@ Validated in `src/config/env.ts` against `backend/.env.example`:
 - `NODE_ENV`: `development`, `test`, or `production`
 - `HOST`, `PORT` (default 4000)
 - `IMAGE_UPLOAD_MAX_MB` (default 25, max 100)
+- `VIDEO_UPLOAD_MAX_MB` (default 15, max 100)
+- `VIDEO_MAX_DURATION_SECONDS` (default 5, max 60; longer videos are trimmed)
 - `DATABASE_URL` (required)
 - `FRONTEND_URL` (primary CORS origin)
 - `CORS_ORIGINS` (comma-separated extras; `*` rejected in production)

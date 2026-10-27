@@ -181,11 +181,7 @@ export async function listFeaturedOffers(coffeeId: string, at: Date): Promise<Of
 }
 
 /** Offers that can be purchased at `at` (window-wise; stock is checked atomically). */
-export async function findPurchasableOffers(
-  coffeeId: string,
-  offerIds: string[],
-  at: Date,
-): Promise<OfferRow[]> {
+export async function findPurchasableOffers(coffeeId: string, offerIds: string[], at: Date): Promise<OfferRow[]> {
   if (!Types.ObjectId.isValid(coffeeId)) return [];
   const ids = [...new Set(offerIds.filter((id) => Types.ObjectId.isValid(id)))];
   if (ids.length === 0) return [];

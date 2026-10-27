@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
+import ffmpegStatic from "ffmpeg-static";
 
 // Mock only the Cloudflare network calls; keep the real validation helpers
 // (mime/magic-byte checks, delivery-URL parsing) so the whole file contract is
@@ -28,9 +35,13 @@ import { setupTestDatabase, teardownTestDatabase, type TestDatabase } from "./he
 import {
   deleteCloudflareImage,
   IMAGE_MAX_SIZE_BYTES,
+  readVideoDurationSeconds,
   uploadCloudflareImage,
 } from "../src/services/cloudflare-images.service.js";
 import type { AdminAuthDto, AdminImageDto, AdminItemDto, CoffeeWithCategoriesDto } from "../src/types/index.js";
+
+const execFileAsync = promisify(execFile);
+const ffmpegPath = ffmpegStatic as unknown as string | null;
 
 const APP_PIN = "3219";
 const DEFAULT_COFFEE_PIN = "0000";
@@ -55,10 +66,41 @@ function mp4Buffer(durationSeconds = 3, timescale = 1000): Buffer {
   mvhd.writeUInt8(0, 0);
   mvhd.writeUInt32BE(timescale, 12);
   mvhd.writeUInt32BE(Math.round(durationSeconds * timescale), 16);
-  return Buffer.concat([
-    box("ftyp", Buffer.from("isom0000", "ascii")),
-    box("moov", box("mvhd", mvhd)),
-  ]);
+  return Buffer.concat([box("ftyp", Buffer.from("isom0000", "ascii")), box("moov", box("mvhd", mvhd))]);
+}
+
+async function realVideoBuffer(durationSeconds: number, format: "mp4" | "webm" = "mp4"): Promise<Buffer> {
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg-static binary is unavailable");
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "faza-test-video-"));
+  const outputPath = join(directory, `clip.${format}`);
+  const codecArgs =
+    format === "webm"
+      ? ["-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "200k"]
+      : ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"];
+  try {
+    await execFileAsync(ffmpegPath, [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `testsrc=duration=${durationSeconds}:size=160x120:rate=10`,
+      ...codecArgs,
+      "-y",
+      outputPath,
+    ]);
+    return await readFile(outputPath);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function realMp4Buffer(durationSeconds: number): Promise<Buffer> {
+  return realVideoBuffer(durationSeconds, "mp4");
 }
 
 describe("Faza image uploads (Cloudflare R2)", () => {
@@ -154,13 +196,7 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect(image.durationMs).toBeNull();
 
       // Never leak credentials — the response only carries safe metadata.
-      expect(Object.keys(response.body.data).sort()).toEqual([
-        "durationMs",
-        "imageId",
-        "mediaType",
-        "mimeType",
-        "url",
-      ]);
+      expect(Object.keys(response.body.data).sort()).toEqual(["durationMs", "imageId", "mediaType", "mimeType", "url"]);
 
       expect(JSON.stringify(response.body)).not.toMatch(
         /access_key|secret_access_key|CLOUDFLARE_R2_SECRET_ACCESS_KEY/i,
@@ -191,9 +227,10 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect((response.body.data as AdminImageDto).imageId).toBe("fake-image-1");
     });
 
-    it("accepts a short MP4 and records its duration", async () => {
+    it("accepts a short MP4 unchanged and records its duration", async () => {
       const token = await coffeeToken("cafe-el-manzah");
-      const response = await uploadAs(token, mp4Buffer(3), "clip.mp4", "video/mp4");
+      const original = mp4Buffer(3);
+      const response = await uploadAs(token, original, "clip.mp4", "video/mp4");
 
       expect(response.status).toBe(201);
       const media = response.body.data as AdminImageDto;
@@ -201,20 +238,81 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect(media.mimeType).toBe("video/mp4");
       expect(media.durationMs).toBe(3000);
 
+      // Videos within the budget are uploaded byte-for-byte (no re-encode).
+      const uploadCall = vi.mocked(uploadCloudflareImage).mock.calls[0]?.[0];
+      expect(uploadCall).toBeDefined();
+      expect(uploadCall!.buffer.equals(original)).toBe(true);
+
       const doc = await ImageModel.findOne({ imageId: "fake-image-1" }).lean().exec();
       expect(doc!.mediaType).toBe("video");
       expect(doc!.mimeType).toBe("video/mp4");
       expect(doc!.durationMs).toBe(3000);
-      expect(doc!.sizeBytes).toBe(mp4Buffer(3).length);
+      expect(doc!.sizeBytes).toBe(original.length);
     });
 
-    it("rejects a video longer than five seconds (400)", async () => {
+    it("keeps a video that is exactly at the duration limit", async () => {
       const token = await coffeeToken("cafe-el-manzah");
-      const response = await uploadAs(token, mp4Buffer(6), "long.mp4", "video/mp4");
+      const original = mp4Buffer(5);
+      const response = await uploadAs(token, original, "exact.mp4", "video/mp4");
 
-      expect(response.status).toBe(400);
-      expect(response.body.message).toMatch(/5 seconds or shorter/);
-      expect(vi.mocked(uploadCloudflareImage)).not.toHaveBeenCalled();
+      expect(response.status).toBe(201);
+      expect((response.body.data as AdminImageDto).durationMs).toBe(5000);
+
+      const uploadCall = vi.mocked(uploadCloudflareImage).mock.calls[0]?.[0];
+      expect(uploadCall).toBeDefined();
+      expect(uploadCall!.buffer.equals(original)).toBe(true);
+    });
+
+    it("trims a video longer than five seconds to the first five seconds", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const response = await uploadAs(token, await realMp4Buffer(6), "long.mp4", "video/mp4");
+
+      expect(response.status).toBe(201);
+      const media = response.body.data as AdminImageDto;
+      expect(media.mediaType).toBe("video");
+      expect(media.mimeType).toBe("video/mp4");
+      expect(media.durationMs).toBeGreaterThan(4500);
+      expect(media.durationMs).toBeLessThanOrEqual(5000);
+
+      const uploadCall = vi.mocked(uploadCloudflareImage).mock.calls[0]?.[0];
+      expect(uploadCall).toBeDefined();
+      expect(uploadCall!.contentType).toBe("video/mp4");
+      expect(uploadCall!.filename).toBe("long.mp4");
+
+      const trimmedDuration = readVideoDurationSeconds(uploadCall!.buffer);
+      expect(trimmedDuration).not.toBeNull();
+      expect(trimmedDuration!).toBeGreaterThan(4.5);
+      expect(trimmedDuration!).toBeLessThanOrEqual(5.05);
+
+      const doc = await ImageModel.findOne({ imageId: "fake-image-1" }).lean().exec();
+      expect(doc!.mediaType).toBe("video");
+      expect(doc!.mimeType).toBe("video/mp4");
+      expect(doc!.durationMs).toBeLessThanOrEqual(5000);
+      expect(doc!.sizeBytes).toBe(uploadCall!.buffer.length);
+    });
+
+    it("normalizes an over-long WebM to a trimmed MP4", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const response = await uploadAs(token, await realVideoBuffer(6, "webm"), "long.webm", "video/webm");
+
+      expect(response.status).toBe(201);
+      const media = response.body.data as AdminImageDto;
+      expect(media.mediaType).toBe("video");
+      expect(media.mimeType).toBe("video/mp4");
+
+      const uploadCall = vi.mocked(uploadCloudflareImage).mock.calls[0]?.[0];
+      expect(uploadCall).toBeDefined();
+      expect(uploadCall!.contentType).toBe("video/mp4");
+      expect(uploadCall!.filename).toBe("long.mp4");
+
+      const trimmedDuration = readVideoDurationSeconds(uploadCall!.buffer);
+      expect(trimmedDuration).not.toBeNull();
+      expect(trimmedDuration!).toBeGreaterThan(4.5);
+      expect(trimmedDuration!).toBeLessThanOrEqual(5.05);
+
+      const doc = await ImageModel.findOne({ imageId: "fake-image-1" }).lean().exec();
+      expect(doc!.mimeType).toBe("video/mp4");
+      expect(doc!.filename).toBe("long.mp4");
     });
 
     it("rejects a video whose duration cannot be verified (400)", async () => {
@@ -226,7 +324,6 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect(response.body.message).toMatch(/Unable to verify the video duration/);
       expect(vi.mocked(uploadCloudflareImage)).not.toHaveBeenCalled();
     });
-
 
     it("rejects unsupported MIME types (400)", async () => {
       const token = await coffeeToken("cafe-el-manzah");

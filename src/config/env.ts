@@ -13,7 +13,7 @@ const envSchema = z.object({
   IMAGE_UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(100).default(25),
   /** Maximum in-memory short-video upload size in megabytes. */
   VIDEO_UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(100).default(15),
-  /** Maximum accepted short-video duration, in seconds. */
+  /** Videos longer than this are trimmed to their first N seconds on upload. */
   VIDEO_MAX_DURATION_SECONDS: z.coerce.number().positive().max(60).default(5),
 
   /**
