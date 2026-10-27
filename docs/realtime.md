@@ -33,10 +33,11 @@ Both carry an `OrderDto`; public payloads do not expose the session token.
 
 Client to server:
 
-- `order:subscribe { orderId }`
+- `order:subscribe { orderId, sessionToken? }`
 - `order:unsubscribe { orderId }`
 - `session:subscribe { sessionToken }`
 - `session:unsubscribe { sessionToken }`
 
-Session subscriptions validate the raw token against its stored hash and join
-only that session's room.
+Order subscriptions require the owning session token when the order belongs to
+a table session. Session subscriptions validate the raw token against its
+stored hash and join only that session's room.

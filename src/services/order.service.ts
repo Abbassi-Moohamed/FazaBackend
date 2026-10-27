@@ -14,7 +14,7 @@ import { findCurrentServiceShift } from "../repositories/service-shift.repositor
 import {
   consumeOfferStock,
   findItemsForOfferLines,
-  findPurchasableOffer,
+  findPurchasableOffers,
   restoreOfferStock,
   type OfferRow,
 } from "../repositories/offer.repository.js";
@@ -169,14 +169,19 @@ export async function placeOrder(input: {
   const offerSnapshots: OfferSnapshot[] = [];
   let offersSubtotal = 0;
   if (requestedOffers.length > 0) {
-    const resolved: { offer: OfferRow; quantity: number }[] = [];
-    for (const entry of requestedOffers) {
-      const offer = await findPurchasableOffer(coffeeId, entry.offerId, now);
+    const offers = await findPurchasableOffers(
+      coffeeId,
+      requestedOffers.map((entry) => entry.offerId),
+      now,
+    );
+    const offerById = new Map(offers.map((offer) => [offer._id.toString(), offer]));
+    const resolved: { offer: OfferRow; quantity: number }[] = requestedOffers.map((entry) => {
+      const offer = offerById.get(entry.offerId);
       if (!offer) {
         throw new ApiError(409, "One or more offers are no longer available.", { code: "OFFER_UNAVAILABLE" });
       }
-      resolved.push({ offer, quantity: entry.quantity });
-    }
+      return { offer, quantity: entry.quantity };
+    });
 
     const componentItems = await findItemsForOfferLines(
       coffeeId,
@@ -268,9 +273,10 @@ export async function getCoffeeOrders(
 export async function getPublicOrder(orderId: string, sessionToken?: string) {
   const order = await findOrder(orderId);
   if (!order) throw new ApiError(404, "Order not found");
-  if (order.tableSessionId && sessionToken) {
+  if (order.tableSessionId) {
+    if (!sessionToken) throw new ApiError(401, "Session token is required.");
     const session = await findTableSessionByToken(sessionToken);
-    if (!session || !order.tableSessionId || session._id.toString() !== order.tableSessionId.toString()) {
+    if (!session || session._id.toString() !== order.tableSessionId.toString()) {
       throw new ApiError(401, "Invalid session token.");
     }
   }
@@ -318,7 +324,7 @@ export async function changeOrderStatus(coffeeId: string, orderId: string, nextS
       code: "NO_ACTIVE_SERVICE",
     });
   }
-  const updated = await updateOrderStatus(coffeeId, orderId, nextStatus, new Date(), activeService?._id);
+  const updated = await updateOrderStatus(coffeeId, orderId, nextStatus, activeService?._id);
   if (!updated) throw new ApiError(404, "Order not found");
   // Rejecting a pending order releases the bundles it had reserved.
   if (nextStatus === "REJECTED" && current.offers?.length) {

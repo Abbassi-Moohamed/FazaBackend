@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { verifyAdminToken } from "../auth/token.js";
 import { isOriginAllowed } from "../config/cors.js";
+import { findOrder } from "../repositories/order.repository.js";
 import { findTableSessionByToken } from "../repositories/table-session.repository.js";
 import type { OrderDto } from "../types/order.js";
 import { logger } from "../utils/logger.js";
@@ -19,10 +20,11 @@ import { logger } from "../utils/logger.js";
  *   sockets auto-join `coffee:{coffeeId}` and receive `order:new` /
  *   `order:updated`. Invalid tokens are rejected at handshake time.
  *   Anonymous sockets (customers) connect without a token and may only
- *   subscribe to their own order's room — the same data they could already
- *   fetch from the public GET /orders/:orderId endpoint.
- * - `order:subscribe { orderId }` / `order:unsubscribe { orderId }` (client
- *   to server): join/leave `order:{orderId}`, receiving `order:updated`.
+ *   subscribe to an order they can prove ownership of with its table-session
+ *   token (legacy orders without a session stay readable by id).
+ * - `order:subscribe { orderId, sessionToken? }` / `order:unsubscribe
+ *   { orderId }` (client to server): join/leave `order:{orderId}`, receiving
+ *   `order:updated`.
  * - `session:subscribe { sessionToken }` / `session:unsubscribe { sessionToken }`
  *   (client to server): join/leave `session:{tableSessionId}`, receiving every
  *   order event of that table session. The token is verified server-side, so a
@@ -41,7 +43,11 @@ interface SocketData {
 type PublicOrder = Omit<OrderDto, "sessionToken">;
 
 interface ClientToServerEvents {
-  "order:subscribe": (orderId: string, ack?: (result: { joined: boolean }) => void) => void;
+  "order:subscribe": (
+    orderId: string,
+    sessionToken?: string,
+    ack?: (result: { joined: boolean }) => void,
+  ) => void;
   "order:unsubscribe": (orderId: string) => void;
   "session:subscribe": (sessionToken: string, ack?: (result: { joined: boolean }) => void) => void;
   "session:unsubscribe": (sessionToken: string) => void;
@@ -87,12 +93,29 @@ async function resolveSessionRoom(sessionToken: unknown): Promise<string | null>
   return session ? sessionRoom(session._id.toString()) : null;
 }
 
+/**
+ * An order is readable without credentials only when it predates table
+ * sessions. Session-bound orders require the token of their own session.
+ */
+async function canAccessOrder(orderId: string, sessionToken: unknown): Promise<boolean> {
+  const order = await findOrder(orderId);
+  if (!order) return false;
+  if (!order.tableSessionId) return true;
+  if (typeof sessionToken !== "string" || sessionToken.length < 20 || sessionToken.length > 256) return false;
+  const session = await findTableSessionByToken(sessionToken);
+  return session !== null && session._id.toString() === order.tableSessionId.toString();
+}
+
 function registerClientEvents(socket: RealtimeSocket): void {
   // The ack tells the client (and tests) when the room join is actually in
-  // place — without it, an emit right after subscribe could race the join.
-  socket.on(ORDER_SUBSCRIBE_EVENT, async (orderId, ack) => {
+  // place �?" without it, an emit right after subscribe could race the join.
+  socket.on(ORDER_SUBSCRIBE_EVENT, async (orderId, sessionToken, ack) => {
     if (typeof orderId === "string" && /^[0-9a-fA-F]{24}$/.test(orderId)) {
       try {
+        if (!(await canAccessOrder(orderId, sessionToken))) {
+          ack?.({ joined: false });
+          return;
+        }
         await socket.join(orderRoom(orderId));
         ack?.({ joined: true });
         return;

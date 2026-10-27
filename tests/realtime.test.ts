@@ -42,10 +42,10 @@ function expectEvent(socket: ClientSocket, event: string, timeoutMs = 3_000): Pr
 }
 
 /** Subscribes to an order room and resolves only once the server confirms the join. */
-function subscribeToOrder(socket: ClientSocket, orderId: string): Promise<void> {
+function subscribeToOrder(socket: ClientSocket, orderId: string, sessionToken?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Timed out waiting for subscribe ack")), 3_000);
-    socket.emit("order:subscribe", orderId, (result: { joined: boolean }) => {
+    socket.emit("order:subscribe", orderId, sessionToken, (result: { joined: boolean }) => {
       clearTimeout(timer);
       if (result.joined) resolve();
       else reject(new Error("Server refused the order subscription"));
@@ -120,7 +120,7 @@ describe("realtime order events", () => {
     // The ordering client's session token must never leak to admins.
     expect(newOrder.sessionToken).toBeUndefined();
 
-    await subscribeToOrder(customer, placed.id);
+    await subscribeToOrder(customer, placed.id, placed.sessionToken);
 
     const updatedReceived = expectEvent(customer, "order:updated");
     await openServiceShift(coffeeId, { type: "MORNING" });
@@ -130,6 +130,16 @@ describe("realtime order events", () => {
     expect(updated.status).toBe("CONFIRMED");
 
     admin.disconnect();
+    customer.disconnect();
+  });
+
+  it("refuses an order subscription without the owning session token", async () => {
+    const customer = await connectClient(url);
+    const placed = await placeTestOrder(25);
+
+    await expect(subscribeToOrder(customer, placed.id)).rejects.toThrow("Server refused");
+    await expect(subscribeToOrder(customer, placed.id, "not-a-real-session-token")).rejects.toThrow("Server refused");
+
     customer.disconnect();
   });
 

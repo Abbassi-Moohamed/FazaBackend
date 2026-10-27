@@ -180,11 +180,17 @@ export async function listFeaturedOffers(coffeeId: string, at: Date): Promise<Of
   return offers.map(toRow);
 }
 
-/** An offer that can be purchased at `at` (window-wise; stock is checked atomically). */
-export async function findPurchasableOffer(coffeeId: string, offerId: string, at: Date): Promise<OfferRow | null> {
-  if (!Types.ObjectId.isValid(coffeeId) || !Types.ObjectId.isValid(offerId)) return null;
-  const offer = await OfferModel.findOne({
-    _id: offerId,
+/** Offers that can be purchased at `at` (window-wise; stock is checked atomically). */
+export async function findPurchasableOffers(
+  coffeeId: string,
+  offerIds: string[],
+  at: Date,
+): Promise<OfferRow[]> {
+  if (!Types.ObjectId.isValid(coffeeId)) return [];
+  const ids = [...new Set(offerIds.filter((id) => Types.ObjectId.isValid(id)))];
+  if (ids.length === 0) return [];
+  const offers = await OfferModel.find({
+    _id: { $in: ids },
     coffeeId,
     archivedAt: null,
     isActive: true,
@@ -193,7 +199,7 @@ export async function findPurchasableOffer(coffeeId: string, offerId: string, at
     .select(SAFE_FIELDS)
     .lean()
     .exec();
-  return offer ? toRow(offer) : null;
+  return offers.map(toRow);
 }
 
 /**

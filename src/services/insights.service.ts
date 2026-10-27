@@ -1,11 +1,9 @@
-import { Types } from "mongoose";
 import {
   aggregateAnalytics,
   getAvailability,
   getMenuHealth,
   getPlatformCounts,
 } from "../repositories/insights.repository.js";
-import { OrderModel } from "../models/order.model.js";
 import type { AnalyticsDto, InsightComparison, InsightKpis } from "../types/insights.js";
 import { ApiError } from "../utils/ApiError.js";
 import { findServiceShiftOwnedByCoffee } from "../repositories/service-shift.repository.js";
@@ -16,8 +14,7 @@ interface LegacyPromotions {
   unitsSoldAtPromotionalPrice: number;
   promotedSalesRevenue: number;
   promotedItemsSold: number;
-  discountAmount: number;
-  discountRate: number;
+  discountAmount: number | null;
   historicalRegularPriceAvailable: boolean;
 }
 
@@ -63,84 +60,23 @@ function comparison(current: number, previous: number): InsightComparison {
 }
 
 function toLegacyMetrics(
-  summary: { orders: number; revenue: number; itemsSold: number; averageOrderValue: number },
-  previous: { orders: number; revenue: number; itemsSold: number; averageOrderValue: number },
+  summary: { confirmedOrders: number; confirmedRevenue: number; itemsSold: number },
+  previous: { confirmedOrders: number; confirmedRevenue: number; itemsSold: number },
 ) {
+  const averageOrderValue = summary.confirmedOrders === 0 ? 0 : summary.confirmedRevenue / summary.confirmedOrders;
+  const previousAverageOrderValue =
+    previous.confirmedOrders === 0 ? 0 : previous.confirmedRevenue / previous.confirmedOrders;
   return {
-    orders: summary.orders,
-    revenue: round(summary.revenue),
+    orders: summary.confirmedOrders,
+    revenue: round(summary.confirmedRevenue),
     itemsSold: summary.itemsSold,
-    averageOrderValue: round(summary.averageOrderValue),
+    averageOrderValue: round(averageOrderValue),
     comparison: {
-      orders: comparison(summary.orders, previous.orders),
-      revenue: comparison(summary.revenue, previous.revenue),
+      orders: comparison(summary.confirmedOrders, previous.confirmedOrders),
+      revenue: comparison(summary.confirmedRevenue, previous.confirmedRevenue),
       itemsSold: comparison(summary.itemsSold, previous.itemsSold),
-      averageOrderValue: comparison(summary.averageOrderValue, previous.averageOrderValue),
+      averageOrderValue: comparison(averageOrderValue, previousAverageOrderValue),
     },
-  };
-}
-
-async function getLegacyRangeSummary(coffeeId: string | undefined, from: Date, to: Date) {
-  const match: Record<string, unknown> = { createdAt: { $gte: from, $lt: to } };
-  if (coffeeId) {
-    if (!Types.ObjectId.isValid(coffeeId)) {
-      return {
-        orders: 0,
-        revenue: 0,
-        itemsSold: 0,
-        averageOrderValue: 0,
-        topItems: [] as Array<{ itemId: string; name: string; quantitySold: number; revenue: number }>,
-      };
-    }
-    match.coffeeId = new Types.ObjectId(coffeeId);
-  }
-
-  const [summaryRow, topItems] = await Promise.all([
-    OrderModel.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: null,
-          orders: { $sum: 1 },
-          revenue: { $sum: "$total" },
-          itemsSold: { $sum: { $sum: "$items.quantity" } },
-        },
-      },
-    ]).exec(),
-    OrderModel.aggregate([
-      { $match: match },
-      { $unwind: "$items" },
-      {
-        $group: {
-          _id: "$items.itemId",
-          name: { $first: "$items.name" },
-          quantitySold: { $sum: "$items.quantity" },
-          revenue: { $sum: "$items.subtotal" },
-        },
-      },
-      { $sort: { revenue: -1, quantitySold: -1 } },
-      { $limit: 10 },
-    ]).exec(),
-  ]);
-
-  const summary = summaryRow[0] ?? { orders: 0, revenue: 0, itemsSold: 0 };
-  const orders = Number(summary.orders ?? 0);
-  const revenue = Number(summary.revenue ?? 0);
-  const itemsSold = Number(summary.itemsSold ?? 0);
-
-  return {
-    orders,
-    revenue,
-    itemsSold,
-    averageOrderValue: orders === 0 ? 0 : revenue / orders,
-    topItems: (topItems ?? []).map(
-      (item: { _id: Types.ObjectId; name: string; quantitySold: number; revenue: number }) => ({
-        itemId: String(item._id),
-        name: item.name,
-        quantitySold: item.quantitySold,
-        revenue: Number(item.revenue ?? 0),
-      }),
-    ),
   };
 }
 
@@ -211,12 +147,7 @@ export async function getInsights(
       ? getMenuHealth(coffeeId, range.from, range.to, serviceShiftId)
       : Promise.resolve({ categories: [], deadStock: { unsoldItems: 0, items: [] } }),
   ]);
-  const currentLegacy = await getLegacyRangeSummary(coffeeId, range.from, range.to);
-  const previousLegacy = await getLegacyRangeSummary(coffeeId, range.previousFrom, range.previousTo);
-  const legacyMetrics = toLegacyMetrics(currentLegacy, previousLegacy);
-  const legacyDiscountAmount = currentLegacy.revenue > 0 ? round(currentLegacy.revenue * 0.2051) : 0;
-  const legacyDiscountRate =
-    currentLegacy.revenue > 0 ? round((legacyDiscountAmount / currentLegacy.revenue) * 100) : 0;
+  const legacyMetrics = toLegacyMetrics(current, previous);
   const statusTotal = current.totalOrders || 1;
   const insights = [];
   if (current.totalOrders === 0)
@@ -225,7 +156,7 @@ export async function getInsights(
       message: "Pas encore assez de données pour dégager une tendance fiable.",
       kind: "neutral" as const,
     });
-  const topItem = currentLegacy.topItems[0] ?? current.topItems[0];
+  const topItem = current.topItems[0];
   if (topItem)
     insights.push({
       id: "best-seller",
@@ -287,7 +218,7 @@ export async function getInsights(
     comparison: legacyMetrics.comparison,
     revenueTrend: current.trend,
     orderTrend: current.trend,
-    topItems: currentLegacy.topItems.length ? currentLegacy.topItems : current.topItems,
+    topItems: current.topItems,
     categories,
     peakHours: current.peakHours,
     hourly: current.hourly,
@@ -305,8 +236,7 @@ export async function getInsights(
       unitsSoldAtPromotionalPrice: 0,
       promotedSalesRevenue: 0,
       promotedItemsSold: 0,
-      discountAmount: legacyDiscountAmount,
-      discountRate: legacyDiscountRate,
+      discountAmount: null,
       historicalRegularPriceAvailable: false,
     } satisfies LegacyPromotions,
     availability: {

@@ -133,16 +133,15 @@ describe("insights", () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.timezone).toBe("UTC");
-    expect(response.body.data.metrics.orders).toBe(2);
-    expect(response.body.data.metrics.revenue).toBe(19.5);
-    expect(response.body.data.metrics.itemsSold).toBe(7);
-    expect(response.body.data.metrics.averageOrderValue).toBe(9.75);
-    expect(response.body.data.comparison.revenue.current).toBe(19.5);
+    expect(response.body.data.metrics.orders).toBe(1);
+    expect(response.body.data.metrics.revenue).toBe(8);
+    expect(response.body.data.metrics.itemsSold).toBe(3);
+    expect(response.body.data.metrics.averageOrderValue).toBe(8);
+    expect(response.body.data.comparison.revenue.current).toBe(8);
     expect(response.body.data.comparison.revenue.previous).toBe(6);
-    expect(response.body.data.topItems[0].name).toBe("Cappuccino");
-    expect(response.body.data.topItems[0].revenue).toBe(12);
-    expect(response.body.data.promotions.discountAmount).toBe(4);
-    expect(response.body.data.promotions.discountRate).toBe(20.51);
+    expect(response.body.data.topItems[0].name).toBe("Espresso");
+    expect(response.body.data.topItems[0].revenue).toBe(5);
+    expect(response.body.data.promotions.discountAmount).toBeNull();
   });
 
   it("supports app-admin filtering, date filters and empty data", async () => {

@@ -62,9 +62,41 @@ describe("visitor ordering", () => {
     expect(response.body.data.items[0].subtotal).toBe(14);
     expect(response.body.data.status).toBe("PENDING");
     const fetched = await request(app).get(`/api/v1/orders/${response.body.data.id}`);
-    expect(fetched.status).toBe(200);
-    expect(fetched.body.data.tableNumber).toBe(12);
-    expect(fetched.body.data.total).toBe(14);
+    expect(fetched.status).toBe(401);
+
+    const fetchedWithToken = await request(app)
+      .get(`/api/v1/orders/${response.body.data.id}`)
+      .set("x-session-token", response.body.data.sessionToken);
+    expect(fetchedWithToken.status).toBe(200);
+    expect(fetchedWithToken.body.data.tableNumber).toBe(12);
+    expect(fetchedWithToken.body.data.total).toBe(14);
+  });
+
+  it("rejects reading a session-bound order with another session's token", async () => {
+    const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
+    const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    const first = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 3,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
+    const second = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 4,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${first.body.data.id}`)
+      .set("x-session-token", second.body.data.sessionToken);
+    expect(response.status).toBe(401);
   });
 
   it("does not accept an item belonging to another coffee", async () => {

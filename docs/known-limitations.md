@@ -4,12 +4,9 @@ These are findings from code inspection, recorded rather than fixed.
 
 ## Data and analytics
 
-- **Hard-coded discount metric**: `src/services/insights.service.ts` contains a
-  hard-coded discount rate `0.2051` (20.51%) and synthetic promotion/discount
-  fields that are not derived from real order data.
-- **Legacy revenue aggregation**: the legacy range summary sums `order.total`
-  for every order in the range, including pending and rejected orders, unlike
-  the confirmed/paid KPIs.
+- **Promotion history unavailable**: orders do not snapshot the item's regular
+  price, so historical discount amounts remain unavailable instead of being
+  estimated.
 
 ## Security
 

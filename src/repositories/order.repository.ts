@@ -62,7 +62,6 @@ export async function updateOrderStatus(
   coffeeId: string,
   orderId: string,
   status: OrderStatus,
-  changedAt: Date,
   serviceShiftId?: Types.ObjectId,
 ) {
   return OrderModel.findOneAndUpdate(
@@ -72,7 +71,6 @@ export async function updateOrderStatus(
         status,
         ...(serviceShiftId ? { serviceShiftId } : {}),
       },
-      $push: { statusHistory: { status, changedAt } },
     },
     { returnDocument: "after", runValidators: true },
   )

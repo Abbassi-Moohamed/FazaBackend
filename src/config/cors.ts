@@ -50,6 +50,6 @@ export const corsOptions: CorsOptions = {
     callback(new ApiError(403, "Origin not allowed by CORS"));
   },
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Session-Token"],
   maxAge: 86_400,
 };

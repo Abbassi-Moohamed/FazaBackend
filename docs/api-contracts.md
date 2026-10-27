@@ -29,8 +29,10 @@
   only when a session is created or accepted.
 - `GET /api/v1/orders?sessionToken=...` - list the session's orders, newest
   first. `limit` defaults to 50 and is capped at 100. Includes session summary.
-- `GET /api/v1/orders/:orderId?sessionToken=...` - read one order. The optional
-  session token is validated when the order belongs to a table session.
+- `GET /api/v1/orders/:orderId` - read one order. A table-session token is
+  required (query `sessionToken` or header `x-session-token`) when the order
+  belongs to a session; only legacy orders without a session stay readable by
+  id alone.
 
 Order lines store immutable snapshots: item/offer name, image, unit price,
 subtotal, and offer components. Totals are computed by the backend.
@@ -45,7 +47,9 @@ subtotal, and offer components. Totals are computed by the backend.
 ## App admin (`APP_ADMIN`)
 
 - `GET /api/v1/admin/coffees` - list coffees with `categoryCount`
-- `POST /api/v1/admin/coffees` - create a coffee; sets default PIN `0000`
+- `POST /api/v1/admin/coffees` - create a coffee with required, unique `name`
+  and `slug`; sets default PIN `0000`. `logo` and `cover` are optional. Without
+  a logo the backend stores `/images/coffee-placeholder.svg`.
 - `GET /api/v1/admin/coffees/:coffeeId` - get one coffee
 - `PATCH /api/v1/admin/coffees/:coffeeId` - update name/logo/cover/slug/image IDs
 - `PATCH /api/v1/admin/coffees/:coffeeId/pin` - reset PIN to `0000`
