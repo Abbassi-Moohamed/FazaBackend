@@ -62,6 +62,16 @@ export async function seedDatabase(): Promise<{ coffees: number; categories: num
             description: item.description,
             price: item.price,
             image: item.image,
+            media: [
+              {
+                imageId: null,
+                url: item.image,
+                type: "image",
+                mimeType: null,
+                durationMs: null,
+                alt: null,
+              },
+            ],
             itemCategoryId: category._id,
           })),
         );

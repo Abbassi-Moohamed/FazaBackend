@@ -1,5 +1,11 @@
 import type { Request, Response } from "express";
-import { createItem, deleteItem, listItems, updateItem } from "../../../services/admin/coffee-admin.service.js";
+import {
+  createItem,
+  deleteItem,
+  listItems,
+  updateItem,
+  type ItemMediaInput,
+} from "../../../services/admin/coffee-admin.service.js";
 import { sendSuccess } from "../../../utils/http.js";
 
 function adminCoffeeId(req: Request): string {
@@ -16,7 +22,13 @@ export async function listMyCategoryItemsController(req: Request, res: Response)
 /** POST /api/v1/admin/my-coffee/categories/:categoryId/items */
 export async function createMyItemController(req: Request, res: Response): Promise<void> {
   const { categoryId } = req.validated!.params as { categoryId: string };
-  const body = req.validated!.body as { name: string; description?: string; price: number; image?: string };
+  const body = req.validated!.body as {
+    name: string;
+    description?: string;
+    price: number;
+    image?: string;
+    media?: ItemMediaInput[];
+  };
   const item = await createItem(adminCoffeeId(req), categoryId, body);
   sendSuccess(res, item, 201);
 }
@@ -24,7 +36,13 @@ export async function createMyItemController(req: Request, res: Response): Promi
 /** PATCH /api/v1/admin/my-coffee/items/:itemId */
 export async function updateMyItemController(req: Request, res: Response): Promise<void> {
   const { itemId } = req.validated!.params as { itemId: string };
-  const body = req.validated!.body as { name?: string; description?: string; price?: number; image?: string };
+  const body = req.validated!.body as {
+    name?: string;
+    description?: string;
+    price?: number;
+    image?: string;
+    media?: ItemMediaInput[];
+  };
   const item = await updateItem(adminCoffeeId(req), itemId, body);
   sendSuccess(res, item);
 }

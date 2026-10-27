@@ -11,6 +11,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().max(65_535).default(4000),
   /** Maximum in-memory image upload size in megabytes. */
   IMAGE_UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(100).default(25),
+  /** Maximum in-memory short-video upload size in megabytes. */
+  VIDEO_UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(100).default(15),
+  /** Maximum accepted short-video duration, in seconds. */
+  VIDEO_MAX_DURATION_SECONDS: z.coerce.number().positive().max(60).default(5),
 
   /**
    * MongoDB connection string. This is the single source of truth for the

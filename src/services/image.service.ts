@@ -4,13 +4,15 @@ import { ImageModel } from "../models/image.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
 import { ItemModel } from "../models/item.model.js";
 import { OfferModel } from "../models/offer.model.js";
-import type { AdminContext, AdminImageDto } from "../types/index.js";
+import type { AdminContext, AdminImageDto, ItemMediaDto } from "../types/index.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import {
-  assertSupportedImage,
   deleteCloudflareImage,
+  inspectMedia,
   isManagedDeliveryUrl,
+  mediaTypeFromImageId,
+  mimeTypeFromImageId,
   parseImageIdFromDeliveryUrl,
   sanitizeFilename,
   uploadCloudflareImage,
@@ -35,14 +37,18 @@ function assertValidCoffeeId(coffeeId: string): void {
   if (!Types.ObjectId.isValid(coffeeId)) throw new ApiError(400, "Invalid coffee identifier");
 }
 
-/** Uploads a validated image to Cloudflare and records its metadata. */
+/** Uploads validated media to Cloudflare and records its metadata. */
 export async function uploadAdminImage(input: {
   buffer: Buffer;
   contentType: string;
   originalName: string;
   admin: AdminContext;
 }): Promise<AdminImageDto> {
-  assertSupportedImage({ buffer: input.buffer, contentType: input.contentType, originalname: input.originalName });
+  const inspection = inspectMedia({
+    buffer: input.buffer,
+    contentType: input.contentType,
+    originalname: input.originalName,
+  });
 
   const uploaded = await uploadCloudflareImage({
     buffer: input.buffer,
@@ -55,12 +61,37 @@ export async function uploadAdminImage(input: {
     imageId: uploaded.imageId,
     url: uploaded.url,
     filename: sanitizeFilename(input.originalName) || null,
+    mediaType: inspection.mediaType,
+    mimeType: inspection.mimeType,
+    durationMs: inspection.durationMs,
+    sizeBytes: inspection.sizeBytes,
     ownerType: isCoffeeAdmin ? "COFFEE" : "APP",
     coffeeId: isCoffeeAdmin && input.admin.coffeeId ? new Types.ObjectId(input.admin.coffeeId) : null,
     uploadedByRole: input.admin.role,
   });
 
-  return { imageId: doc.imageId, url: doc.url };
+  return {
+    imageId: doc.imageId,
+    url: doc.url,
+    mediaType: doc.mediaType ?? inspection.mediaType,
+    mimeType: doc.mimeType ?? inspection.mimeType,
+    durationMs: doc.durationMs ?? inspection.durationMs,
+  };
+}
+
+function assertCanAttachImage(
+  doc: {
+    ownerType: "COFFEE" | "APP";
+    coffeeId?: Types.ObjectId | null;
+  },
+  admin: AdminContext,
+): void {
+  if (admin.role !== "COFFEE_ADMIN") return;
+  const ownedBySelf = doc.ownerType === "COFFEE" && doc.coffeeId?.toString() === admin.coffeeId;
+  const unclaimed = doc.ownerType === "APP";
+  if (!ownedBySelf && !unclaimed) {
+    throw new ApiError(403, "Forbidden");
+  }
 }
 
 /**
@@ -83,15 +114,50 @@ export async function resolveImageForEntity(input: {
   const doc = await ImageModel.findOne({ imageId }).lean().exec();
   if (!doc) return { imageId: null, url: input.url };
 
-  if (input.admin.role === "COFFEE_ADMIN") {
-    const ownedBySelf = doc.ownerType === "COFFEE" && doc.coffeeId?.toString() === input.admin.coffeeId;
-    const unclaimed = doc.ownerType === "APP";
-    if (!ownedBySelf && !unclaimed) {
-      throw new ApiError(403, "Forbidden");
-    }
+  assertCanAttachImage(doc, input.admin);
+  if ((doc.mediaType ?? mediaTypeFromImageId(imageId)) === "video") {
+    throw new ApiError(400, "A video cannot be used as an image.");
   }
 
   return { imageId, url: input.url };
+}
+
+/**
+ * Resolves one item-gallery entry. Managed media must exist in our metadata
+ * collection so its type and duration are server-trusted; external URLs stay
+ * supported as images for backward compatibility.
+ */
+export async function resolveMediaForEntity(input: {
+  url: string;
+  alt?: string | null;
+  admin: AdminContext;
+}): Promise<ItemMediaDto> {
+  if (!isManagedDeliveryUrl(input.url)) {
+    return {
+      imageId: null,
+      url: input.url,
+      type: "image",
+      mimeType: null,
+      durationMs: null,
+      alt: input.alt ?? null,
+    };
+  }
+
+  const imageId = parseImageIdFromDeliveryUrl(input.url);
+  if (!imageId) throw new ApiError(400, "Invalid media delivery URL.");
+
+  const doc = await ImageModel.findOne({ imageId }).lean().exec();
+  if (!doc) throw new ApiError(400, "Uploaded media was not found. Please upload it again.");
+
+  assertCanAttachImage(doc, input.admin);
+  return {
+    imageId,
+    url: input.url,
+    type: doc.mediaType ?? mediaTypeFromImageId(imageId),
+    mimeType: doc.mimeType ?? mimeTypeFromImageId(imageId),
+    durationMs: doc.durationMs ?? null,
+    alt: input.alt ?? doc.alt ?? null,
+  };
 }
 
 /**
@@ -114,7 +180,10 @@ async function isImageStillReferenced(
   imageId: string,
   exclude?: { coffeeId?: string; itemId?: string; categoryId?: string; offerId?: string },
 ): Promise<boolean> {
-  const items = await ItemModel.find({ imageId }).select({ _id: 1 }).lean().exec();
+  const items = await ItemModel.find({ $or: [{ imageId }, { "media.imageId": imageId }] })
+    .select({ _id: 1 })
+    .lean()
+    .exec();
   for (const item of items) {
     if (item._id.toString() !== exclude?.itemId) return true;
   }
@@ -157,7 +226,10 @@ async function isImageUsedByCoffee(imageId: string, coffeeId: string): Promise<b
   const offer = await OfferModel.exists({ imageId, coffeeId });
   if (offer) return true;
 
-  const items = await ItemModel.find({ imageId }).select({ itemCategoryId: 1 }).lean().exec();
+  const items = await ItemModel.find({ $or: [{ imageId }, { "media.imageId": imageId }] })
+    .select({ itemCategoryId: 1 })
+    .lean()
+    .exec();
   if (items.length === 0) return false;
   const categoryIds = items.map((item) => item.itemCategoryId);
   const category = await ItemCategoryModel.exists({ _id: { $in: categoryIds }, coffeeId });

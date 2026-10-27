@@ -91,6 +91,19 @@ export const categoryBodySchema = z.object({
   image: z.url("image must be a valid URL.").optional(),
 });
 
+const itemMediaBodySchema = z.object({
+  url: z.url("media url must be a valid URL."),
+  alt: z.string().trim().max(300, "Media alt text must be at most 300 characters.").optional(),
+});
+
+const itemMediaListSchema = z
+  .array(itemMediaBodySchema)
+  .max(5, "An item can have at most 5 media files.")
+  .refine((media) => new Set(media.map((entry) => entry.url)).size === media.length, {
+    message: "The same media file cannot be added twice.",
+    path: ["media"],
+  });
+
 export const itemBodySchema = z
   .object({
     name: z.string().trim().min(1, "Item name is required.").max(120, "Item name must be at most 120 characters."),
@@ -105,6 +118,7 @@ export const itemBodySchema = z
       .default(null),
     isAvailable: z.boolean().optional().default(true),
     image: z.url("image must be a valid URL.").optional(),
+    media: itemMediaListSchema.optional(),
   })
   .refine((value) => value.promotion === null || value.promotion < value.price, {
     message: "Promotional price must be lower than the regular price.",
@@ -124,6 +138,7 @@ export const updateItemBodySchema = z
     promotion: z.number().finite().positive("Promotional price must be greater than zero.").nullable().optional(),
     isAvailable: z.boolean().optional(),
     image: z.url("image must be a valid URL.").optional(),
+    media: itemMediaListSchema.optional(),
   })
   .refine((value) => Object.keys(value).length >= 1, {
     message: "Provide at least one field to update.",

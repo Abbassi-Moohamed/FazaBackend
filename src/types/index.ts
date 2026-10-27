@@ -20,6 +20,15 @@ export interface CoffeeWithCategoriesDto {
   categories: CategoryDto[];
 }
 
+export interface ItemMediaDto {
+  imageId: string | null;
+  url: string;
+  type: "image" | "video";
+  mimeType: string | null;
+  durationMs: number | null;
+  alt: string | null;
+}
+
 export interface ItemDto {
   id: string;
   name: string;
@@ -28,6 +37,7 @@ export interface ItemDto {
   promotion: number | null;
   isAvailable: boolean;
   image: string | null;
+  media: ItemMediaDto[];
 }
 
 /** The two administrator levels of the Faza backoffice. */
@@ -81,15 +91,19 @@ export interface AdminItemDto {
   promotion: number | null;
   isAvailable: boolean;
   image: string | null;
+  media: ItemMediaDto[];
   itemCategoryId: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** An image uploaded to Cloudflare R2. Only metadata is returned/stored. */
+/** An image or short video uploaded to Cloudflare R2. Only metadata is returned/stored. */
 export interface AdminImageDto {
   imageId: string;
   url: string;
+  mediaType: "image" | "video";
+  mimeType: string | null;
+  durationMs: number | null;
 }
 
 /** Request body shape shared by the app-admin and coffee-admin coffee edits. */

@@ -20,13 +20,14 @@ import {
   updateItemOwnedByCoffee,
 } from "../../repositories/admin/item.repository.js";
 import { detachItemFromOffers } from "../../repositories/offer.repository.js";
-import { attachImageToEntity, deleteImage, resolveImageForEntity } from "../image.service.js";
+import { attachImageToEntity, deleteImage, resolveImageForEntity, resolveMediaForEntity } from "../image.service.js";
 import type {
   AdminCategoryDto,
   AdminCoffeeDto,
   AdminItemDto,
   AdminContext,
   CoffeeUpdateInput,
+  ItemMediaDto,
 } from "../../types/index.js";
 import { ApiError } from "../../utils/ApiError.js";
 
@@ -37,6 +38,11 @@ import { ApiError } from "../../utils/ApiError.js";
  * re-validated against the stored relationships for every operation.
  */
 
+export interface ItemMediaInput {
+  url: string;
+  alt?: string | null;
+}
+
 export interface CreateItemInput {
   name: string;
   description?: string;
@@ -44,6 +50,7 @@ export interface CreateItemInput {
   promotion?: number | null;
   isAvailable?: boolean;
   image?: string;
+  media?: ItemMediaInput[];
 }
 
 export interface UpdateItemInput {
@@ -53,14 +60,62 @@ export interface UpdateItemInput {
   promotion?: number | null;
   isAvailable?: boolean;
   image?: string;
+  media?: ItemMediaInput[];
   /** Cloudflare image id resolved from `image`; never accepted from the client. */
   imageId?: string | null;
 }
+
+type ItemPatch = Partial<{
+  name: string;
+  description: string;
+  price: number;
+  promotion: number | null;
+  isAvailable: boolean;
+  image: string | null;
+  imageId: string | null;
+  media: ItemMediaDto[];
+}>;
 
 function validateItemPricing(price: number, promotion: number | null): void {
   if (price <= 0 || (promotion !== null && (promotion <= 0 || promotion >= price))) {
     throw new ApiError(400, "Promotional price must be greater than zero and lower than the regular price.");
   }
+}
+
+function coverOf(media: ItemMediaDto[]): ItemMediaDto | null {
+  return media.find((entry) => entry.type === "image") ?? null;
+}
+
+function imageIdsOfItem(item: { imageId: string | null; media: ItemMediaDto[] }): string[] {
+  const ids = new Set<string>();
+  if (item.imageId) ids.add(item.imageId);
+  for (const media of item.media) {
+    if (media.imageId) ids.add(media.imageId);
+  }
+  return [...ids];
+}
+
+async function resolveItemMedia(media: ItemMediaInput[], admin: AdminContext): Promise<ItemMediaDto[]> {
+  const resolved: ItemMediaDto[] = [];
+  for (const entry of media) {
+    resolved.push(await resolveMediaForEntity({ url: entry.url, alt: entry.alt ?? null, admin }));
+  }
+  return resolved;
+}
+
+async function resolveLegacyImageMedia(image: string, admin: AdminContext): Promise<ItemMediaDto[]> {
+  const resolved = await resolveImageForEntity({ url: image, admin });
+  if (!resolved.url) return [];
+  return [
+    {
+      imageId: resolved.imageId,
+      url: resolved.url,
+      type: "image",
+      mimeType: null,
+      durationMs: null,
+      alt: null,
+    },
+  ];
 }
 
 function coffeeToDto(coffee: {
@@ -102,6 +157,7 @@ function itemToDto(item: {
   promotion: number | null;
   isAvailable: boolean;
   image: string | null;
+  media: ItemMediaDto[];
   itemCategoryId: import("mongoose").Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -114,6 +170,7 @@ function itemToDto(item: {
     promotion: item.promotion ?? null,
     isAvailable: item.isAvailable ?? true,
     image: item.image,
+    media: item.media,
     itemCategoryId: item.itemCategoryId.toString(),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -269,9 +326,12 @@ export async function deleteCategory(coffeeId: string, categoryId: string): Prom
   const deleted = await deleteCategoryOwnedByCoffee(coffeeId, categoryId);
   if (!deleted) throw new ApiError(404, "Category not found");
 
-  const imageIds = [...new Set(items.map((item) => item.imageId).filter((id): id is string => Boolean(id)))];
+  const imageIds = new Set<string>();
+  for (const item of items) {
+    for (const imageId of imageIdsOfItem(item)) imageIds.add(imageId);
+  }
   if (category.imageId) {
-    imageIds.push(category.imageId);
+    imageIds.add(category.imageId);
   }
   for (const imageId of imageIds) {
     await deleteImage(imageId, { coffeeId, categoryId });
@@ -296,13 +356,13 @@ export async function createItem(coffeeId: string, categoryId: string, input: Cr
   validateItemPricing(input.price, input.promotion ?? null);
 
   const admin: AdminContext = { role: "COFFEE_ADMIN", coffeeId };
-  let image: string | null = input.image ?? null;
-  let imageId: string | null = null;
-  if (image !== null) {
-    const resolved = await resolveImageForEntity({ url: image, admin });
-    image = resolved.url;
-    imageId = resolved.imageId;
-  }
+  const media =
+    input.media !== undefined
+      ? await resolveItemMedia(input.media, admin)
+      : input.image !== undefined
+        ? await resolveLegacyImageMedia(input.image, admin)
+        : [];
+  const cover = coverOf(media);
 
   const item = await createItemForCategory(categoryId, {
     name: input.name,
@@ -310,11 +370,14 @@ export async function createItem(coffeeId: string, categoryId: string, input: Cr
     price: input.price,
     promotion: input.promotion ?? null,
     isAvailable: input.isAvailable ?? true,
-    image,
-    imageId,
+    image: cover?.url ?? null,
+    imageId: cover?.imageId ?? null,
+    media,
   });
 
-  if (imageId) await attachImageToEntity(imageId, coffeeId);
+  for (const imageId of imageIdsOfItem(item)) {
+    await attachImageToEntity(imageId, coffeeId);
+  }
   return itemToDto(item);
 }
 
@@ -327,27 +390,40 @@ export async function updateItem(coffeeId: string, itemId: string, input: Update
   );
 
   const admin: AdminContext = { role: "COFFEE_ADMIN", coffeeId };
-  const patch: UpdateItemInput = {};
+  const patch: ItemPatch = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
   if (input.price !== undefined) patch.price = input.price;
   if (input.promotion !== undefined) patch.promotion = input.promotion;
   if (input.isAvailable !== undefined) patch.isAvailable = input.isAvailable;
 
-  let newImageId: string | null | undefined;
-  if (input.image !== undefined) {
-    const resolved = await resolveImageForEntity({ url: input.image, admin });
-    patch.image = resolved.url;
-    newImageId = resolved.imageId;
-    patch.imageId = resolved.imageId;
+  let nextMedia: ItemMediaDto[] | undefined;
+  if (input.media !== undefined) {
+    nextMedia = await resolveItemMedia(input.media, admin);
+    const cover = coverOf(nextMedia);
+    patch.media = nextMedia;
+    patch.image = cover?.url ?? null;
+    patch.imageId = cover?.imageId ?? null;
+  } else if (input.image !== undefined) {
+    nextMedia = await resolveLegacyImageMedia(input.image, admin);
+    const cover = coverOf(nextMedia);
+    patch.media = nextMedia;
+    patch.image = cover?.url ?? null;
+    patch.imageId = cover?.imageId ?? null;
   }
 
   const item = await updateItemOwnedByCoffee(coffeeId, itemId, patch);
   if (!item) throw new ApiError(404, "Item not found");
 
-  if (newImageId) await attachImageToEntity(newImageId, coffeeId);
-  if (input.image !== undefined && existing.imageId !== null && existing.imageId !== newImageId) {
-    await deleteImage(existing.imageId, { coffeeId, itemId });
+  if (nextMedia !== undefined) {
+    const previousIds = new Set(imageIdsOfItem(existing));
+    const currentIds = new Set(imageIdsOfItem(item));
+    for (const imageId of currentIds) {
+      await attachImageToEntity(imageId, coffeeId);
+    }
+    for (const imageId of previousIds) {
+      if (!currentIds.has(imageId)) await deleteImage(imageId, { coffeeId, itemId });
+    }
   }
 
   return itemToDto(item);
@@ -363,6 +439,8 @@ export async function deleteItem(coffeeId: string, itemId: string): Promise<{ id
   // An offer must never keep pointing at an item that no longer exists.
   await detachItemFromOffers(coffeeId, itemId);
 
-  if (existing.imageId) await deleteImage(existing.imageId, { coffeeId, itemId });
+  for (const imageId of imageIdsOfItem(existing)) {
+    await deleteImage(imageId, { coffeeId, itemId });
+  }
   return { id: itemId };
 }

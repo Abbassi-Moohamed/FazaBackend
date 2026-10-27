@@ -32,6 +32,30 @@ const imageSchema = new Schema(
       default: null,
       maxlength: [200, "filename must be at most 200 characters."],
     },
+    /** Image or short video. Kept so consumers never have to guess from the key. */
+    mediaType: {
+      type: String,
+      enum: ["image", "video"],
+      default: "image",
+      required: true,
+    },
+    mimeType: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [100, "mimeType must be at most 100 characters."],
+    },
+    /** Video duration read from the container; null for images and GIFs. */
+    durationMs: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+    sizeBytes: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     alt: {
       type: String,
       trim: true,

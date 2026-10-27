@@ -43,6 +43,24 @@ function pngBuffer(extra = 32): Buffer {
 const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00, 0x00, 0x00]);
 const textBuffer = Buffer.from("definitely not an image", "utf8");
 
+function box(type: string, payload: Buffer): Buffer {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(8 + payload.length, 0);
+  header.write(type, 4, "ascii");
+  return Buffer.concat([header, payload]);
+}
+
+function mp4Buffer(durationSeconds = 3, timescale = 1000): Buffer {
+  const mvhd = Buffer.alloc(100);
+  mvhd.writeUInt8(0, 0);
+  mvhd.writeUInt32BE(timescale, 12);
+  mvhd.writeUInt32BE(Math.round(durationSeconds * timescale), 16);
+  return Buffer.concat([
+    box("ftyp", Buffer.from("isom0000", "ascii")),
+    box("moov", box("mvhd", mvhd)),
+  ]);
+}
+
 describe("Faza image uploads (Cloudflare R2)", () => {
   let testDb: TestDatabase;
   let app: Express;
@@ -106,6 +124,12 @@ describe("Faza image uploads (Cloudflare R2)", () => {
     return category!.id;
   }
 
+  async function firstCategoryId(slug: string): Promise<string> {
+    const coffee = await publicCoffee(slug);
+    expect(coffee.categories.length).toBeGreaterThan(0);
+    return coffee.categories[0]!.id;
+  }
+
   // ---- upload authorization & validation ------------------------------------
 
   describe("upload endpoint", () => {
@@ -125,9 +149,19 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       const image = response.body.data as AdminImageDto;
       expect(image.imageId).toBe("fake-image-1");
       expect(image.url).toBe(deliveryUrl("fake-image-1"));
+      expect(image.mediaType).toBe("image");
+      expect(image.mimeType).toBe("image/png");
+      expect(image.durationMs).toBeNull();
 
-      // Never leak credentials — the response is exactly { imageId, url }.
-      expect(Object.keys(response.body.data).sort()).toEqual(["imageId", "url"]);
+      // Never leak credentials — the response only carries safe metadata.
+      expect(Object.keys(response.body.data).sort()).toEqual([
+        "durationMs",
+        "imageId",
+        "mediaType",
+        "mimeType",
+        "url",
+      ]);
+
       expect(JSON.stringify(response.body)).not.toMatch(
         /access_key|secret_access_key|CLOUDFLARE_R2_SECRET_ACCESS_KEY/i,
       );
@@ -157,11 +191,48 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       expect((response.body.data as AdminImageDto).imageId).toBe("fake-image-1");
     });
 
+    it("accepts a short MP4 and records its duration", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const response = await uploadAs(token, mp4Buffer(3), "clip.mp4", "video/mp4");
+
+      expect(response.status).toBe(201);
+      const media = response.body.data as AdminImageDto;
+      expect(media.mediaType).toBe("video");
+      expect(media.mimeType).toBe("video/mp4");
+      expect(media.durationMs).toBe(3000);
+
+      const doc = await ImageModel.findOne({ imageId: "fake-image-1" }).lean().exec();
+      expect(doc!.mediaType).toBe("video");
+      expect(doc!.mimeType).toBe("video/mp4");
+      expect(doc!.durationMs).toBe(3000);
+      expect(doc!.sizeBytes).toBe(mp4Buffer(3).length);
+    });
+
+    it("rejects a video longer than five seconds (400)", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const response = await uploadAs(token, mp4Buffer(6), "long.mp4", "video/mp4");
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/5 seconds or shorter/);
+      expect(vi.mocked(uploadCloudflareImage)).not.toHaveBeenCalled();
+    });
+
+    it("rejects a video whose duration cannot be verified (400)", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const invalidMp4 = Buffer.concat([box("ftyp", Buffer.from("isom0000", "ascii")), Buffer.alloc(32)]);
+      const response = await uploadAs(token, invalidMp4, "broken.mp4", "video/mp4");
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/Unable to verify the video duration/);
+      expect(vi.mocked(uploadCloudflareImage)).not.toHaveBeenCalled();
+    });
+
+
     it("rejects unsupported MIME types (400)", async () => {
       const token = await coffeeToken("cafe-el-manzah");
       const response = await uploadAs(token, textBuffer, "notes.txt", "text/plain");
       expect(response.status).toBe(400);
-      expect(response.body.message).toMatch(/Unsupported image type/);
+      expect(response.body.message).toMatch(/Unsupported media type/);
       expect(vi.mocked(uploadCloudflareImage)).not.toHaveBeenCalled();
     });
 
@@ -265,9 +336,106 @@ describe("Faza image uploads (Cloudflare R2)", () => {
       const raw = await mongoose.connection.collection("items").findOne({ _id: new mongoose.Types.ObjectId(itemId) });
       expect(raw!.image).toBe(deliveryUrl("fake-image-1"));
       expect(raw!.imageId).toBe("fake-image-1");
+      expect(raw!.media).toEqual([
+        {
+          imageId: "fake-image-1",
+          url: deliveryUrl("fake-image-1"),
+          type: "image",
+          mimeType: null,
+          durationMs: null,
+          alt: null,
+        },
+      ]);
 
       // No binary image data is ever written to MongoDB.
       expect(Object.values(raw ?? {}).some((value) => Buffer.isBuffer(value))).toBe(false);
+    });
+
+    it("stores an ordered item gallery with server-trusted media types", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const categoryId = await firstCategoryId("cafe-el-manzah");
+
+      await uploadAs(token, pngBuffer(), "cover.png", "image/png"); // fake-image-1
+      await uploadAs(token, mp4Buffer(4), "clip.mp4", "video/mp4"); // fake-image-2
+      await uploadAs(token, pngBuffer(), "detail.png", "image/png"); // fake-image-3
+
+      const created = await request(app)
+        .post(`/api/v1/admin/my-coffee/categories/${categoryId}/items`)
+        .set(...bearer(token))
+        .send({
+          name: "Gallery",
+          price: 4,
+          media: [
+            { url: deliveryUrl("fake-image-1"), alt: "Vue de face" },
+            { url: deliveryUrl("fake-image-2") },
+            { url: deliveryUrl("fake-image-3") },
+          ],
+        });
+      expect(created.status).toBe(201);
+
+      const item = created.body.data as AdminItemDto;
+      expect(item.media).toHaveLength(3);
+      expect(item.media.map((media) => media.type)).toEqual(["image", "video", "image"]);
+      expect(item.media[1]!.durationMs).toBe(4000);
+      expect(item.media[0]!.alt).toBe("Vue de face");
+      expect(item.image).toBe(deliveryUrl("fake-image-1"));
+
+      const raw = await mongoose.connection.collection("items").findOne({ _id: new mongoose.Types.ObjectId(item.id) });
+      expect(raw!.media).toHaveLength(3);
+      expect(raw!.image).toBe(deliveryUrl("fake-image-1"));
+      expect(raw!.imageId).toBe("fake-image-1");
+    });
+
+    it("rejects more than five media files (400)", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const categoryId = await firstCategoryId("cafe-el-manzah");
+
+      const response = await request(app)
+        .post(`/api/v1/admin/my-coffee/categories/${categoryId}/items`)
+        .set(...bearer(token))
+        .send({
+          name: "Too many media",
+          price: 1,
+          media: Array.from({ length: 6 }, (_, index) => ({
+            url: `https://picsum.photos/seed/media-${index}/400/300`,
+          })),
+        });
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body)).toMatch(/at most 5 media/);
+    });
+
+    it("replacing the gallery deletes only media that is no longer used", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const categoryId = await firstCategoryId("cafe-el-manzah");
+
+      await uploadAs(token, pngBuffer(), "a.png", "image/png"); // fake-image-1
+      await uploadAs(token, pngBuffer(), "b.png", "image/png"); // fake-image-2
+      await uploadAs(token, pngBuffer(), "c.png", "image/png"); // fake-image-3
+
+      const created = await request(app)
+        .post(`/api/v1/admin/my-coffee/categories/${categoryId}/items`)
+        .set(...bearer(token))
+        .send({
+          name: "Gallery replace",
+          price: 2,
+          media: [{ url: deliveryUrl("fake-image-1") }, { url: deliveryUrl("fake-image-2") }],
+        });
+      expect(created.status).toBe(201);
+      const itemId = (created.body.data as AdminItemDto).id;
+
+      const updated = await request(app)
+        .patch(`/api/v1/admin/my-coffee/items/${itemId}`)
+        .set(...bearer(token))
+        .send({ media: [{ url: deliveryUrl("fake-image-2") }, { url: deliveryUrl("fake-image-3") }] });
+
+      expect(updated.status).toBe(200);
+      expect(vi.mocked(deleteCloudflareImage)).toHaveBeenCalledWith("fake-image-1");
+      expect(vi.mocked(deleteCloudflareImage)).not.toHaveBeenCalledWith("fake-image-2");
+      expect(vi.mocked(deleteCloudflareImage)).not.toHaveBeenCalledWith("fake-image-3");
+      expect(await ImageModel.exists({ imageId: "fake-image-1" })).toBeNull();
+      expect(await ImageModel.exists({ imageId: "fake-image-2" })).not.toBeNull();
+      expect(await ImageModel.exists({ imageId: "fake-image-3" })).not.toBeNull();
     });
 
     it("keeps external URLs untouched (imageId stays null)", async () => {

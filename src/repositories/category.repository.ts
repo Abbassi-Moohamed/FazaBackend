@@ -1,5 +1,6 @@
 import { ItemModel } from "../models/item.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
+import type { ItemMediaDto } from "../types/index.js";
 
 export interface ItemRecord {
   id: string;
@@ -9,6 +10,7 @@ export interface ItemRecord {
   promotion: number | null;
   isAvailable: boolean;
   image: string | null;
+  media: ItemMediaDto[];
 }
 
 export interface CategoryWithItemsRecord {
@@ -16,6 +18,43 @@ export interface CategoryWithItemsRecord {
   name: string;
   image: string | null;
   items: ItemRecord[];
+}
+
+interface ItemMediaRow {
+  imageId?: string | null;
+  url: string;
+  type: "image" | "video";
+  mimeType?: string | null;
+  durationMs?: number | null;
+  alt?: string | null;
+}
+
+function mediaFallback(
+  media: readonly ItemMediaRow[] | undefined,
+  image: string | null,
+  imageId: string | null,
+): ItemMediaDto[] {
+  if (media && media.length > 0) {
+    return media.map((entry) => ({
+      imageId: entry.imageId ?? null,
+      url: entry.url,
+      type: entry.type,
+      mimeType: entry.mimeType ?? null,
+      durationMs: entry.durationMs ?? null,
+      alt: entry.alt ?? null,
+    }));
+  }
+  if (!image) return [];
+  return [
+    {
+      imageId,
+      url: image,
+      type: "image",
+      mimeType: null,
+      durationMs: null,
+      alt: null,
+    },
+  ];
 }
 
 /**
@@ -29,7 +68,7 @@ export async function findCategoryWithItemsById(categoryId: string): Promise<Cat
 
   const items = await ItemModel.find({ itemCategoryId: category._id })
     .sort({ name: 1 })
-    .select({ name: 1, description: 1, price: 1, promotion: 1, isAvailable: 1, image: 1 })
+    .select({ name: 1, description: 1, price: 1, promotion: 1, isAvailable: 1, image: 1, imageId: 1, media: 1 })
     .lean()
     .exec();
 
@@ -37,14 +76,19 @@ export async function findCategoryWithItemsById(categoryId: string): Promise<Cat
     id: category._id.toString(),
     name: category.name,
     image: category.image ?? null,
-    items: items.map((item) => ({
-      id: item._id.toString(),
-      name: item.name,
-      description: item.description ?? null,
-      price: item.price,
-      promotion: item.promotion ?? null,
-      isAvailable: item.isAvailable ?? true,
-      image: item.image ?? null,
-    })),
+    items: items.map((item) => {
+      const image = item.image ?? null;
+      const imageId = item.imageId ?? null;
+      return {
+        id: item._id.toString(),
+        name: item.name,
+        description: item.description ?? null,
+        price: item.price,
+        promotion: item.promotion ?? null,
+        isAvailable: item.isAvailable ?? true,
+        image,
+        media: mediaFallback(item.media, image, imageId),
+      };
+    }),
   };
 }
