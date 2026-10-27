@@ -3,6 +3,9 @@
 ## App admin (`APP_ADMIN`)
 
 - Full coffee CRUD: list, create, read, update, delete.
+- Creation requires only a name and a unique slug; logo and cover are optional
+  and can be added later from the coffee edit form. A placeholder logo is used
+  until a real one is uploaded.
 - Reset any coffee's admin PIN to `0000`.
 - Platform insights at `GET /api/v1/admin/insights`, optionally filtered by
   coffee and service shift.

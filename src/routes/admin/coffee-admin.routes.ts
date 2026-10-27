@@ -34,7 +34,7 @@ import {
   offerBodySchema,
   offerIdParamsSchema,
   updateOfferBodySchema,
-  updateCoffeeBodySchema,
+  updateMyCoffeeBodySchema,
   updateItemBodySchema,
   listServiceShiftsQuerySchema,
   listTableSessionsQuerySchema,
@@ -167,7 +167,7 @@ coffeeAdminRouter.get(
 
 // Coffee information + PIN change.
 coffeeAdminRouter.get("/", getMyCoffeeController);
-coffeeAdminRouter.patch("/", validate({ body: updateCoffeeBodySchema }), updateMyCoffeeController);
+coffeeAdminRouter.patch("/", validate({ body: updateMyCoffeeBodySchema }), updateMyCoffeeController);
 coffeeAdminRouter.patch("/pin", validate({ body: changePinBodySchema }), changeMyPinController);
 
 // Categories.

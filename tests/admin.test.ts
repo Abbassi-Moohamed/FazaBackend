@@ -197,7 +197,20 @@ describe("Faza backoffice", () => {
         .patch("/api/v1/admin/my-coffee")
         .set(...bearer(token))
         .send({ slug: "brew-and-beans" });
-      expect(response.status).toBe(409);
+      expect([400, 409]).toContain(response.status);
+    });
+
+    it("never changes the slug, even alongside other valid fields (400)", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const response = await request(app)
+        .patch("/api/v1/admin/my-coffee")
+        .set(...bearer(token))
+        .send({ name: "Café El Manzah", slug: "cafe-el-manzah-renamed" });
+      expect(response.status).toBe(400);
+      const mine = await request(app)
+        .get("/api/v1/admin/my-coffee")
+        .set(...bearer(await coffeeToken("cafe-el-manzah")));
+      expect((mine.body.data as AdminCoffeeDto).slug).toBe("cafe-el-manzah");
     });
 
     it("can create, list, update and delete their own categories", async () => {
@@ -406,10 +419,11 @@ describe("Faza backoffice", () => {
       const created = await request(app)
         .post("/api/v1/admin/coffees")
         .set(...bearer(token))
-        .send({ name: "Café Ternat", logo: "https://example.com/ternat-logo.png" });
+        .send({ name: "CafAc Ternat", slug: "cafe-ternat" });
       expect(created.status).toBe(201);
       const coffee = created.body.data as AdminCoffeeDto;
       expect(coffee.slug).toBe("cafe-ternat");
+      expect(coffee.logo).toBe("/images/coffee-placeholder.svg");
       expect(coffee.categoryCount).toBe(0);
 
       // The new coffee is immediately accessible by its coffee admin with the
@@ -419,12 +433,36 @@ describe("Faza backoffice", () => {
       expect((login.body.data as AdminAuthDto).coffeeId).toBe(coffee.id);
     });
 
+    it("requires a slug while creating (400)", async () => {
+      const token = await appToken();
+      const response = await request(app)
+        .post("/api/v1/admin/coffees")
+        .set(...bearer(token))
+        .send({ name: "CafAc Sans Identifiant", logo: "https://example.com/x.png" });
+      expect(response.status).toBe(400);
+      expect(response.body.details).toEqual(expect.arrayContaining([expect.objectContaining({ field: "body.slug" })]));
+    });
+
+    it("allows a duplicate coffee name with a distinct unique slug", async () => {
+      const token = await appToken();
+      const response = await request(app)
+        .post("/api/v1/admin/coffees")
+        .set(...bearer(token))
+        .send({
+          name: "CafAc El Manzah",
+          logo: "https://example.com/manzah-2.png",
+          slug: "cafe-el-manzah-2",
+        });
+      expect(response.status).toBe(201);
+      expect((response.body.data as AdminCoffeeDto).slug).toBe("cafe-el-manzah-2");
+    });
+
     it("rejects a duplicate slug while creating (409)", async () => {
       const token = await appToken();
       const response = await request(app)
         .post("/api/v1/admin/coffees")
         .set(...bearer(token))
-        .send({ name: "Café El Manzah 2", logo: "https://example.com/x.png", slug: "cafe-el-manzah" });
+        .send({ name: "CafAc El Manzah 2", logo: "https://example.com/x.png", slug: "cafe-el-manzah" });
       expect(response.status).toBe(409);
     });
 

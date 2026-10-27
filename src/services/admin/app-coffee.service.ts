@@ -24,9 +24,9 @@ const DEFAULT_COFFEE_PIN = "0000";
 
 export interface CreateCoffeeInput {
   name: string;
-  logo: string;
+  slug: string;
+  logo?: string;
   cover?: string;
-  slug?: string;
 }
 
 function toDto(coffee: {
@@ -51,30 +51,8 @@ function toDto(coffee: {
   };
 }
 
-/** Lowercase `name`, strip accents and non-alphanumerics, join with dashes. */
-function slugify(name: string): string {
-  const base = name
-    .normalize("NFKD") // Café → Cafe
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-    .replace(/-+$/g, "");
-
-  return base.length > 0 ? base : "coffee";
-}
-
-async function generateUniqueSlug(name: string): Promise<string> {
-  const base = slugify(name);
-  let slug = base;
-  let suffix = 2;
-  while (await isCoffeeSlugTaken(slug)) {
-    const candidate = `${base}-${suffix}`;
-    slug = candidate.slice(0, 80).replace(/-+$/g, "");
-    suffix += 1;
-  }
-  return slug;
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: number }).code === 11000;
 }
 
 async function assertSlugAvailable(slug: string, excludeId?: string): Promise<void> {
@@ -95,11 +73,12 @@ export async function getCoffee(coffeeId: string): Promise<AdminCoffeeDto> {
 }
 
 export async function createCoffee(input: CreateCoffeeInput): Promise<AdminCoffeeDto> {
-  const slug = input.slug ?? (await generateUniqueSlug(input.name));
-  await assertSlugAvailable(slug);
+  await assertSlugAvailable(input.slug);
 
   const admin: AdminContext = { role: "APP_ADMIN" };
-  const resolved = await resolveImageForEntity({ url: input.logo, admin });
+  const resolved = input.logo
+    ? await resolveImageForEntity({ url: input.logo, admin })
+    : { url: "/images/coffee-placeholder.svg", imageId: null };
   const resolvedCover = input.cover
     ? await resolveImageForEntity({ url: input.cover, admin })
     : { url: null, imageId: null };
@@ -111,12 +90,21 @@ export async function createCoffee(input: CreateCoffeeInput): Promise<AdminCoffe
     logoImageId: resolved.imageId,
     cover: resolvedCover.url,
     coverImageId: resolvedCover.imageId,
-    slug,
+    slug: input.slug,
     adminPinHash,
+  }).catch((error: unknown) => {
+    if (isDuplicateKeyError(error)) {
+      throw new ApiError(409, "Slug is already taken");
+    }
+    throw error;
   });
 
-  await attachImageToEntity(resolved.imageId, coffee._id.toString());
-  await attachImageToEntity(resolvedCover.imageId, coffee._id.toString());
+  if (resolved.imageId) {
+    await attachImageToEntity(resolved.imageId, coffee._id.toString());
+  }
+  if (resolvedCover.imageId) {
+    await attachImageToEntity(resolvedCover.imageId, coffee._id.toString());
+  }
   return toDto(coffee);
 }
 
@@ -150,7 +138,12 @@ export async function updateCoffee(coffeeId: string, input: CoffeeUpdateInput): 
   }
   if (input.slug !== undefined) patch.slug = input.slug;
 
-  const updated = await updateAdminCoffee(coffeeId, patch);
+  const updated = await updateAdminCoffee(coffeeId, patch).catch((error: unknown) => {
+    if (isDuplicateKeyError(error)) {
+      throw new ApiError(409, "Slug is already taken");
+    }
+    throw error;
+  });
   if (!updated) throw new ApiError(404, "Coffee not found");
 
   if (patch.logoImageId) await attachImageToEntity(patch.logoImageId, coffeeId);

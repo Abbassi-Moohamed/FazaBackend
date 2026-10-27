@@ -17,13 +17,13 @@ export async function listAdminCoffeesController(_req: Request, res: Response): 
 
 /** POST /api/v1/admin/coffees */
 export async function createAdminCoffeeController(req: Request, res: Response): Promise<void> {
-  const { name, logo, cover, slug } = req.validated!.body as {
+  const { name, slug, logo, cover } = req.validated!.body as {
     name: string;
+    slug: string;
     logo: string;
     cover?: string;
-    slug?: string;
   };
-  const coffee = await createCoffee({ name, logo, cover, slug });
+  const coffee = await createCoffee({ name, slug, logo, cover });
   sendSuccess(res, coffee, 201);
 }
 
