@@ -160,14 +160,14 @@ export async function getInsights(
   if (topItem)
     insights.push({
       id: "best-seller",
-      message: `${topItem.name} est votre meilleure vente.`,
+      message: `Votre article le plus vendu est « ${topItem.name} ».`,
       kind: "positive" as const,
     });
   if (current.peakHours.length) {
     const peak = current.peakHours.reduce((a, b) => (b.orders > a.orders ? b : a));
     insights.push({
       id: "peak-hour",
-      message: `Votre heure la plus active est ${String(peak.hour).padStart(2, "0")}h.`,
+      message: `Votre pic d’activité se situe à ${String(peak.hour).padStart(2, "0")} h.`,
       kind: "neutral" as const,
     });
   }
@@ -176,13 +176,15 @@ export async function getInsights(
   if (leadingCategory && leadingCategory.percentageOfRevenue > 0)
     insights.push({
       id: "leading-category",
-      message: `La catégorie « ${leadingCategory.categoryName} » pèse ${leadingCategory.percentageOfRevenue.toFixed(0)} % du chiffre d'affaires.`,
+      message: `La catégorie « ${leadingCategory.categoryName} » représente ${leadingCategory.percentageOfRevenue.toFixed(0)} % du chiffre d’affaires.`,
       kind: "neutral" as const,
     });
   if (deadStock.unsoldItems > 0)
     insights.push({
       id: "dead-stock",
-      message: `${deadStock.unsoldItems} article(s) de la carte n'ont pas été vendus sur la période.`,
+      message: `${deadStock.unsoldItems} article${deadStock.unsoldItems > 1 ? "s" : ""} de la carte ${
+        deadStock.unsoldItems > 1 ? "n’ont pas été vendus" : "n’a pas été vendu"
+      } sur la période.`,
       kind: "warning" as const,
     });
   if (current.totalOrders > 0 && rate(current.rejectedOrders, current.totalOrders) >= 5)
@@ -194,7 +196,9 @@ export async function getInsights(
   if (availability.unavailableItems > 0)
     insights.push({
       id: "availability",
-      message: `${availability.unavailableItems} article(s) sont actuellement indisponibles.`,
+      message: `${availability.unavailableItems} article${availability.unavailableItems > 1 ? "s" : ""} ${
+        availability.unavailableItems > 1 ? "sont indisponibles" : "est indisponible"
+      } sur la carte.`,
       kind: "warning" as const,
     });
   return {
