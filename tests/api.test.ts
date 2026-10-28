@@ -5,6 +5,8 @@ import type { Express } from "express";
 import { createApp } from "../src/app.js";
 import { seedDatabase } from "../src/db/seed.js";
 import { mongoose } from "../src/db/index.js";
+import { ItemModel } from "../src/models/item.model.js";
+import { ItemViewModel } from "../src/models/item-view.model.js";
 import { setupTestDatabase, teardownTestDatabase, type TestDatabase } from "./helpers.js";
 import type { CoffeeWithCategoriesDto, ItemDto } from "../src/types/index.js";
 
@@ -186,6 +188,31 @@ describe("Faza public API", () => {
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
       expect(response.body.details[0].field).toBe("params.categoryId");
+    });
+  });
+
+  describe("POST /api/v1/coffees/:coffeeSlug/items/:itemId/views", () => {
+    it("records a daily aggregate only for an available item owned by the coffee", async () => {
+      const coffee = (await request(app).get("/api/v1/coffees/cafe-el-manzah")).body.data as CoffeeWithCategoriesDto;
+      const category = coffee.categories.find((entry) => entry.name === "Cafés")!;
+      const espresso = (await categoryItems(category.id)).find((item) => item.name === "Espresso")!;
+
+      const recorded = await Promise.all(
+        Array.from({ length: 4 }, () => request(app).post(`/api/v1/coffees/${coffee.slug}/items/${espresso.id}/views`)),
+      );
+      expect(recorded.every((response) => response.status === 201)).toBe(true);
+      expect(recorded.every((response) => response.body.data.recorded === true)).toBe(true);
+      expect(await ItemViewModel.findOne({ coffeeId: coffee.id, itemId: espresso.id }).lean()).toMatchObject({
+        views: 4,
+      });
+
+      await ItemModel.updateOne({ _id: espresso.id }, { $set: { isAvailable: false } });
+      const unavailable = await request(app).post(`/api/v1/coffees/${coffee.slug}/items/${espresso.id}/views`);
+      expect(unavailable.status).toBe(404);
+      expect(await ItemViewModel.countDocuments({ coffeeId: coffee.id, itemId: espresso.id })).toBe(1);
+
+      const otherCoffee = await request(app).post(`/api/v1/coffees/brew-and-beans/items/${espresso.id}/views`);
+      expect(otherCoffee.status).toBe(404);
     });
   });
 

@@ -59,6 +59,31 @@ export interface InsightTopItem {
   revenue: number;
 }
 
+export interface InsightItemEngagement {
+  itemId: string;
+  name: string;
+  /** Unique detail openings per browser tab session. */
+  views: number;
+  confirmedOrders: number;
+  unitsSold: number;
+  /** Share of current-menu item views within the selected period. */
+  viewsSharePercent: number;
+  /** Share of confirmed order-item pairs within the selected period. */
+  ordersSharePercent: number | null;
+  /** Percentage-point difference between view share and order share. */
+  interestGapPoints: number | null;
+  /** Confirmed orders containing this item per 100 detail openings. */
+  ordersPer100Views: number | null;
+}
+
+export interface InsightItemEngagementSummary {
+  views: number;
+  /** Confirmed order-item pairs; an order containing two items counts twice. */
+  itemOrders: number;
+  unitsSold: number;
+  ordersPer100Views: number | null;
+}
+
 export interface InsightCategory {
   categoryId: string;
   categoryName: string;
@@ -109,6 +134,9 @@ export interface AnalyticsDto {
   revenueTrend: InsightPoint[];
   orderTrend: InsightPoint[];
   topItems: InsightTopItem[];
+  /** Coffee-wide detail views and sales for the selected date range. */
+  itemEngagement?: InsightItemEngagement[];
+  itemEngagementSummary?: InsightItemEngagementSummary;
   categories: InsightCategory[];
   peakHours: Array<{ hour: number; orders: number }>;
   /** Same hourly breakdown as `peakHours`, enriched with the revenue. */

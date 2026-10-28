@@ -1,10 +1,16 @@
 import { Router } from "express";
 import { getCoffeeBySlugController } from "../../controllers/coffee.controller.js";
 import { getCoffeeOffersController } from "../../controllers/offer.controller.js";
+import { recordPublicItemViewController } from "../../controllers/item-view.controller.js";
 import { validate } from "../../middlewares/validate.middleware.js";
-import { coffeeSlugSchema } from "../../validators/coffee.validators.js";
+import { coffeeSlugSchema, publicItemViewParamsSchema } from "../../validators/coffee.validators.js";
 
 export const coffeeRouter = Router();
 
 coffeeRouter.get("/coffees/:coffeeSlug", validate({ params: coffeeSlugSchema }), getCoffeeBySlugController);
 coffeeRouter.get("/coffees/:coffeeSlug/offers", validate({ params: coffeeSlugSchema }), getCoffeeOffersController);
+coffeeRouter.post(
+  "/coffees/:coffeeSlug/items/:itemId/views",
+  validate({ params: publicItemViewParamsSchema }),
+  recordPublicItemViewController,
+);

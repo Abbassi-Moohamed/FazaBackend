@@ -7,6 +7,7 @@ import { seedDatabase } from "../src/db/seed.js";
 import { ItemModel } from "../src/models/item.model.js";
 import { ItemCategoryModel } from "../src/models/item-category.model.js";
 import { OrderModel } from "../src/models/order.model.js";
+import { ItemViewModel } from "../src/models/item-view.model.js";
 import { setupTestDatabase, teardownTestDatabase, type TestDatabase } from "./helpers.js";
 
 const APP_PIN = "3219";
@@ -259,6 +260,69 @@ describe("insights", () => {
     expect(response.body.data.kpis.rejectionRate.trend).toBe("up");
     expect(response.body.data.hourly).toEqual([{ hour: 10, orders: 1, revenue: 9 }]);
     expect(response.body.data.peakHours).toEqual([{ hour: 10, orders: 1 }]);
+  });
+
+  it("compares views to distinct confirmed orders and sold units", async () => {
+    const espressoId = BUNDLE.itemIds.coffeeEspresso;
+    const cappuccinoId = BUNDLE.itemIds.coffeeCappuccino;
+    const viewDate = new Date("2025-03-10T00:00:00.000Z");
+    await ItemViewModel.create({ coffeeId: BUNDLE.coffeeId, itemId: espressoId, viewDate, views: 10 });
+    await ItemViewModel.create({ coffeeId: BUNDLE.coffeeId, itemId: cappuccinoId, viewDate, views: 30 });
+    await OrderModel.create({
+      coffeeId: BUNDLE.coffeeId,
+      tableNumber: 8,
+      items: [
+        { itemId: espressoId, name: "Espresso", image: null, quantity: 2, unitPrice: 2.5, subtotal: 5 },
+        { itemId: espressoId, name: "Espresso", image: null, quantity: 1, unitPrice: 2.5, subtotal: 2.5 },
+      ],
+      total: 7.5,
+      status: "CONFIRMED",
+      createdAt: new Date("2025-03-10T12:00:00.000Z"),
+      updatedAt: new Date("2025-03-10T12:00:00.000Z"),
+    });
+    await OrderModel.create({
+      coffeeId: BUNDLE.coffeeId,
+      tableNumber: 9,
+      items: [{ itemId: cappuccinoId, name: "Cappuccino", image: null, quantity: 1, unitPrice: 3, subtotal: 3 }],
+      total: 3,
+      status: "CONFIRMED",
+      createdAt: new Date("2025-03-10T13:00:00.000Z"),
+      updatedAt: new Date("2025-03-10T13:00:00.000Z"),
+    });
+
+    const response = await request(app)
+      .get("/api/v1/admin/my-coffee/insights")
+      .set("Authorization", "Bearer " + BUNDLE.tokens.coffee)
+      .query({ startDate: "2025-03-10T00:00:00.000Z", endDate: "2025-03-11T00:00:00.000Z" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.itemEngagementSummary).toEqual({
+      views: 40,
+      itemOrders: 2,
+      unitsSold: 4,
+      ordersPer100Views: 5,
+    });
+    expect(response.body.data.itemEngagement).toContainEqual(
+      expect.objectContaining({
+        itemId: espressoId,
+        views: 10,
+        confirmedOrders: 1,
+        unitsSold: 3,
+        viewsSharePercent: 25,
+        ordersSharePercent: 50,
+        interestGapPoints: -25,
+        ordersPer100Views: 10,
+      }),
+    );
+    expect(response.body.data.itemEngagement).toContainEqual(
+      expect.objectContaining({
+        itemId: cappuccinoId,
+        viewsSharePercent: 75,
+        ordersSharePercent: 50,
+        interestGapPoints: 25,
+        ordersPer100Views: 3.3,
+      }),
+    );
   });
 
   it("splits the revenue per category and lists the items that never sold", async () => {

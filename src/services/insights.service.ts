@@ -1,6 +1,7 @@
 import {
   aggregateAnalytics,
   getAvailability,
+  getItemEngagement,
   getMenuHealth,
   getPlatformCounts,
 } from "../repositories/insights.repository.js";
@@ -138,7 +139,7 @@ export async function getInsights(
       throw new ApiError(404, "Service shift not found.");
     }
   }
-  const [current, previous, availability, platform, menuHealth] = await Promise.all([
+  const [current, previous, availability, platform, menuHealth, engagement] = await Promise.all([
     aggregateAnalytics(coffeeId, range.from, range.to, bucket, serviceShiftId),
     aggregateAnalytics(coffeeId, range.previousFrom, range.previousTo, bucket, serviceShiftId),
     coffeeId ? getAvailability(coffeeId) : Promise.resolve({ availableItems: 0, unavailableItems: 0 }),
@@ -146,6 +147,7 @@ export async function getInsights(
     coffeeId
       ? getMenuHealth(coffeeId, range.from, range.to, serviceShiftId)
       : Promise.resolve({ categories: [], deadStock: { unsoldItems: 0, items: [] } }),
+    coffeeId ? getItemEngagement(coffeeId, range.from, range.to) : Promise.resolve(undefined),
   ]);
   const legacyMetrics = toLegacyMetrics(current, previous);
   const statusTotal = current.totalOrders || 1;
@@ -223,6 +225,7 @@ export async function getInsights(
     revenueTrend: current.trend,
     orderTrend: current.trend,
     topItems: current.topItems,
+    ...(engagement ? { itemEngagement: engagement.items, itemEngagementSummary: engagement.summary } : {}),
     categories,
     peakHours: current.peakHours,
     hourly: current.hourly,
@@ -258,6 +261,10 @@ export async function getInsights(
       "Les commandes ne stockent pas le prix normal historique; les analyses de promotion restent volontairement indisponibles.",
       "Les catégories sont déduites de la carte actuelle: un article supprimé depuis la vente n'est rattaché à aucune catégorie.",
       "Le taux de disponibilité historique ne peut pas être calculé sans historique des changements.",
+      "Les ouvertures sont dédupliquées par article et par onglet. Les commandes mesurent les commandes confirmées contenant chaque article, sans attribution individuelle entre ouverture et achat.",
+      "La part d’intérêt compare la part des ouvertures à la part des commandes contenant l’article; c’est un signal de merchandising, pas un taux de conversion.",
+      "Les ventes incluses sont les articles commandés séparément; les composants des offres ne sont pas attribués. Les analyses d’engagement portent sur la carte actuelle et des journées UTC complètes.",
+      "Les vues et ventes d’articles ne sont pas filtrées par service.",
       "Le fuseau métier est UTC.",
     ],
     ...(platform ? { platform } : {}),

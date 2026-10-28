@@ -2,6 +2,7 @@ import { Types, type PipelineStage } from "mongoose";
 import { ItemModel } from "../models/item.model.js";
 import { ItemCategoryModel } from "../models/item-category.model.js";
 import { OrderModel } from "../models/order.model.js";
+import { ItemViewModel } from "../models/item-view.model.js";
 import type { InsightCategory, InsightDeadStock, InsightDeadStockItem } from "../types/insights.js";
 
 export interface AnalyticsRangeResult {
@@ -20,6 +21,30 @@ export interface AnalyticsRangeResult {
   hourly: Array<{ hour: number; orders: number; revenue: number }>;
   busiestDays: Array<{ dayOfWeek: number; orders: number; revenue: number }>;
   tables: Array<{ tableNumber: number; orders: number; revenue: number }>;
+}
+
+export interface ItemEngagementResult {
+  itemId: string;
+  name: string;
+  views: number;
+  confirmedOrders: number;
+  unitsSold: number;
+  viewsSharePercent: number;
+  ordersSharePercent: number | null;
+  interestGapPoints: number | null;
+  ordersPer100Views: number | null;
+}
+
+export interface ItemEngagementSummary {
+  views: number;
+  itemOrders: number;
+  unitsSold: number;
+  ordersPer100Views: number | null;
+}
+
+export interface ItemEngagementData {
+  items: ItemEngagementResult[];
+  summary: ItemEngagementSummary;
 }
 
 const zero: AnalyticsRangeResult = {
@@ -237,7 +262,7 @@ async function getSoldQuantities(
   from: Date,
   to: Date,
   serviceShiftId?: string,
-): Promise<Map<string, { quantity: number; revenue: number }>> {
+): Promise<Map<string, { quantity: number; revenue: number; orders: number }>> {
   const id = objectId(coffeeId);
   if (!id) return new Map();
   const match: Record<string, unknown> = {
@@ -252,18 +277,103 @@ async function getSoldQuantities(
     { $unwind: "$items" },
     {
       $group: {
-        _id: "$items.itemId",
+        _id: { orderId: "$_id", itemId: "$items.itemId" },
         quantity: { $sum: "$items.quantity" },
         revenue: { $sum: "$items.subtotal" },
       },
     },
+    {
+      $group: {
+        _id: "$_id.itemId",
+        quantity: { $sum: "$quantity" },
+        revenue: { $sum: "$revenue" },
+        orders: { $sum: 1 },
+      },
+    },
   ]).exec();
   return new Map(
-    rows.map((row: { _id: Types.ObjectId; quantity: number; revenue: number }) => [
+    rows.map((row: { _id: Types.ObjectId; quantity: number; revenue: number; orders: number }) => [
       String(row._id),
-      { quantity: Number(row.quantity ?? 0), revenue: Number(row.revenue ?? 0) },
+      {
+        quantity: Number(row.quantity ?? 0),
+        revenue: Number(row.revenue ?? 0),
+        orders: Number(row.orders ?? 0),
+      },
     ]),
   );
+}
+
+/**
+ * Item-level detail views and confirmed order performance for the same dates.
+ * Menu interest is coffee-wide, so service-shift filters do not apply.
+ */
+export async function getItemEngagement(coffeeId: string, from: Date, to: Date): Promise<ItemEngagementData> {
+  const id = objectId(coffeeId);
+  if (!id) return { items: [], summary: { views: 0, itemOrders: 0, unitsSold: 0, ordersPer100Views: null } };
+  const catalog = await getCatalog(coffeeId);
+  if (catalog.length === 0)
+    return { items: [], summary: { views: 0, itemOrders: 0, unitsSold: 0, ordersPer100Views: null } };
+
+  const fromDay = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const toDay = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
+  if (to.getTime() > toDay.getTime()) toDay.setUTCDate(toDay.getUTCDate() + 1);
+
+  const [viewRows, sold] = await Promise.all([
+    ItemViewModel.aggregate<{ _id: Types.ObjectId; views: number }>([
+      { $match: { coffeeId: id, viewDate: { $gte: fromDay, $lt: toDay } } },
+      { $group: { _id: "$itemId", views: { $sum: "$views" } } },
+    ]).exec(),
+    getSoldQuantities(coffeeId, fromDay, toDay),
+  ]);
+  const viewsByItem = new Map(viewRows.map((row) => [String(row._id), Number(row.views ?? 0)]));
+
+  const items = catalog.map((item) => {
+    const itemSales = sold.get(item.itemId);
+    return {
+      itemId: item.itemId,
+      name: item.name,
+      views: viewsByItem.get(item.itemId) ?? 0,
+      confirmedOrders: itemSales?.orders ?? 0,
+      unitsSold: itemSales?.quantity ?? 0,
+    };
+  });
+  const totalViews = items.reduce((total, item) => total + item.views, 0);
+  const totalOrders = items.reduce((total, item) => total + item.confirmedOrders, 0);
+  const totalUnitsSold = items.reduce((total, item) => total + item.unitsSold, 0);
+  const rankedItems = items
+    .map((item) => {
+      const viewsSharePercent = totalViews === 0 ? 0 : Number(((item.views / totalViews) * 100).toFixed(1));
+      const ordersSharePercent =
+        totalOrders === 0 ? null : Number(((item.confirmedOrders / totalOrders) * 100).toFixed(1));
+      return {
+        ...item,
+        viewsSharePercent,
+        ordersSharePercent,
+        interestGapPoints:
+          ordersSharePercent === null ? null : Number((viewsSharePercent - ordersSharePercent).toFixed(1)),
+        ordersPer100Views: item.views === 0 ? null : Number(((item.confirmedOrders / item.views) * 100).toFixed(1)),
+      };
+    })
+    .sort((a, b) => {
+      if (a.interestGapPoints === null && b.interestGapPoints !== null) return 1;
+      if (b.interestGapPoints === null && a.interestGapPoints !== null) return -1;
+      return (
+        (b.interestGapPoints ?? 0) - (a.interestGapPoints ?? 0) ||
+        b.views - a.views ||
+        b.confirmedOrders - a.confirmedOrders ||
+        a.name.localeCompare(b.name)
+      );
+    });
+
+  return {
+    items: rankedItems,
+    summary: {
+      views: totalViews,
+      itemOrders: totalOrders,
+      unitsSold: totalUnitsSold,
+      ordersPer100Views: totalViews === 0 ? null : Number(((totalOrders / totalViews) * 100).toFixed(1)),
+    },
+  };
 }
 
 /** How many unsold items the payload lists, once sorted by price. */
