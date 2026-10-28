@@ -13,7 +13,7 @@ Validated in `src/config/env.ts` against `backend/.env.example`:
 - `FRONTEND_URL` (primary CORS origin)
 - `CORS_ORIGINS` (comma-separated extras; `*` rejected in production)
 - `LOG_LEVEL`
-- `APP_ADMIN_PIN` (exactly four digits; static MVP gate)
+- `APP_ADMIN_PIN` (exactly four digits; static MVP gate; default rejected in production)
 - `ADMIN_SECRET` (minimum 16 characters; dev default refused in production)
 - `ADMIN_TOKEN_TTL` (default `12h`)
 - `CLOUDFLARE_ACCOUNT_ID`
@@ -52,6 +52,7 @@ with the page hostname when the app is opened from a non-loopback LAN address.
 ## Production requirements
 
 - Set an explicit random `ADMIN_SECRET`.
+- Set an `APP_ADMIN_PIN` other than the documented development default `3219`.
 - Set explicit CORS origins.
 - Use a production MongoDB URI.
 - Run `npm run db:migrate` before starting the compiled server.

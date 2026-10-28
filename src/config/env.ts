@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildInfo } from "./build-info.js";
 
 const DEV_ADMIN_SECRET = "faza-dev-admin-secret-do-not-use-in-prod";
+const DEV_APP_ADMIN_PIN = "3219";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -35,7 +36,7 @@ const envSchema = z.object({
   APP_ADMIN_PIN: z
     .string()
     .regex(/^\d{4}$/, "APP_ADMIN_PIN must be exactly 4 digits.")
-    .default("3219"),
+    .default(DEV_APP_ADMIN_PIN),
 
   /**
    * Secret used to sign the short-lived admin bearer tokens (HS256).
@@ -91,6 +92,13 @@ const data = parsed.data;
 if (data.NODE_ENV === "production" && data.ADMIN_SECRET === DEV_ADMIN_SECRET) {
   console.error(
     "Invalid environment configuration: ADMIN_SECRET must be overridden in production (the default dev value is not allowed).",
+  );
+  process.exit(1);
+}
+
+if (data.NODE_ENV === "production" && data.APP_ADMIN_PIN === DEV_APP_ADMIN_PIN) {
+  console.error(
+    "Invalid environment configuration: APP_ADMIN_PIN must be overridden in production (the default dev value is not allowed).",
   );
   process.exit(1);
 }
