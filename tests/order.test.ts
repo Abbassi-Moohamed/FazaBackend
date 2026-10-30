@@ -40,6 +40,45 @@ describe("visitor ordering", () => {
     expect(response.status).toBe(201);
   });
 
+  it("enforces the configured table limit and defaults to 1000 when unset", async () => {
+    const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
+    const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();
+    const item = await ItemModel.findOne({ itemCategoryId: { $in: categoryIds } })
+      .lean()
+      .exec();
+    await CoffeeModel.updateOne({ _id: coffee!._id }, { $set: { tableCount: 3 } });
+
+    const outsideLimit = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 4,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
+    expect(outsideLimit.status).toBe(400);
+    expect(outsideLimit.body.details).toMatchObject({ code: "TABLE_NUMBER_OUT_OF_RANGE", maxTableNumber: 3 });
+
+    const highestAllowed = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 3,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
+    expect(highestAllowed.status).toBe(201);
+
+    await CoffeeModel.updateOne({ _id: coffee!._id }, { $set: { tableCount: null } });
+    const defaultLimit = await request(app)
+      .post("/api/v1/orders")
+      .send({
+        coffeeSlug: "cafe-el-manzah",
+        tableNumber: 1001,
+        items: [{ itemId: item!._id.toString(), quantity: 1 }],
+      });
+    expect(defaultLimit.status).toBe(400);
+    expect(defaultLimit.body.details).toMatchObject({ maxTableNumber: 1000 });
+  });
+
   it("checks ownership, availability and calculates a promotional total server-side", async () => {
     const coffee = await CoffeeModel.findOne({ slug: "cafe-el-manzah" }).lean().exec();
     const categoryIds = await ItemCategoryModel.find({ coffeeId: coffee!._id }).distinct("_id").exec();

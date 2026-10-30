@@ -124,6 +124,7 @@ function coffeeToDto(coffee: {
   logo: string;
   cover: string | null;
   slug: string;
+  tableCount: number | null;
   categoryCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -190,6 +191,7 @@ export async function getMyCoffee(coffeeId: string): Promise<AdminCoffeeDto> {
     logo: coffee.logo,
     cover: coffee.cover,
     slug: coffee.slug,
+    tableCount: coffee.tableCount,
     categoryCount: coffee.categoryCount,
     createdAt: coffee.createdAt,
     updatedAt: coffee.updatedAt,
@@ -213,6 +215,7 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
     logoImageId: string | null;
     cover: string | null;
     coverImageId: string | null;
+    tableCount: number | null;
   }> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.logo !== undefined) {
@@ -225,6 +228,7 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
     patch.cover = resolved.url;
     patch.coverImageId = resolved.imageId;
   }
+  if (input.tableCount !== undefined) patch.tableCount = input.tableCount;
 
   const updated = await updateAdminCoffee(coffeeId, patch);
   if (!updated) throw new ApiError(404, "Coffee not found");
@@ -248,6 +252,7 @@ export async function updateMyCoffee(coffeeId: string, input: CoffeeUpdateInput)
     logo: updated.logo,
     cover: updated.cover,
     slug: updated.slug,
+    tableCount: updated.tableCount,
     categoryCount: updated.categoryCount,
     createdAt: updated.createdAt,
     updatedAt: updated.updatedAt,

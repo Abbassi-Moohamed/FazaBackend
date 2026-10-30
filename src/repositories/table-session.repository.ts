@@ -25,6 +25,10 @@ export async function createTableSession(input: {
   return TableSessionModel.create(input);
 }
 
+export async function deleteEmptyTableSession(sessionId: Types.ObjectId): Promise<void> {
+  await TableSessionModel.deleteOne({ _id: sessionId, status: "ACTIVE", orderCount: 0 }).exec();
+}
+
 export async function touchTableSession(sessionId: Types.ObjectId, at = new Date()): Promise<void> {
   await TableSessionModel.updateOne(
     { _id: sessionId, status: "ACTIVE" },

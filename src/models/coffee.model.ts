@@ -46,6 +46,12 @@ const coffeeSchema = new Schema(
       trim: true,
       default: null,
     },
+    tableCount: {
+      type: Number,
+      min: 1,
+      max: 10000,
+      default: null,
+    },
     /**
      * scrypt hash of the coffee's 4-digit admin PIN (`scrypt$<salt>$<key>`).
      * Never exposed through any API response; the plain PIN is only ever

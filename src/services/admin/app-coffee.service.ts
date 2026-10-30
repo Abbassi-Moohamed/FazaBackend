@@ -35,6 +35,7 @@ function toDto(coffee: {
   logo: string;
   cover: string | null;
   slug: string;
+  tableCount: number | null;
   categoryCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +46,7 @@ function toDto(coffee: {
     logo: coffee.logo,
     cover: coffee.cover,
     slug: coffee.slug,
+    tableCount: coffee.tableCount,
     categoryCount: coffee.categoryCount,
     createdAt: coffee.createdAt,
     updatedAt: coffee.updatedAt,
@@ -124,6 +126,7 @@ export async function updateCoffee(coffeeId: string, input: CoffeeUpdateInput): 
     logoImageId: string | null;
     cover: string | null;
     coverImageId: string | null;
+    tableCount: number | null;
   }> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.logo !== undefined) {
@@ -136,6 +139,7 @@ export async function updateCoffee(coffeeId: string, input: CoffeeUpdateInput): 
     patch.cover = resolved.url;
     patch.coverImageId = resolved.imageId;
   }
+  if (input.tableCount !== undefined) patch.tableCount = input.tableCount;
   if (input.slug !== undefined) patch.slug = input.slug;
 
   const updated = await updateAdminCoffee(coffeeId, patch).catch((error: unknown) => {

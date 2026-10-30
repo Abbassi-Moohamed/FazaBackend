@@ -8,6 +8,7 @@ import { CoffeeModel } from "../src/models/coffee.model.js";
 import { ItemCategoryModel } from "../src/models/item-category.model.js";
 import { ItemModel } from "../src/models/item.model.js";
 import { OfferModel } from "../src/models/offer.model.js";
+import { TableSessionModel } from "../src/models/table-session.model.js";
 import type { AdminAuthDto, AdminOfferDto, FeaturedOfferDto, OrderDto } from "../src/types/index.js";
 import { setupTestDatabase, teardownTestDatabase, type TestDatabase } from "./helpers.js";
 
@@ -213,6 +214,9 @@ describe("daily offers", () => {
       .send({ coffeeSlug: SLUG, tableNumber: 4, offers: [{ offerId: offer.id, quantity: 1 }] });
     expect(soldOut.status).toBe(409);
     expect(soldOut.body.details).toMatchObject({ code: "OFFER_SOLD_OUT" });
+    expect(await TableSessionModel.countDocuments({ coffeeId: (await CoffeeModel.findOne({ slug: SLUG }))!._id })).toBe(
+      1,
+    );
 
     const featured = await request(app).get(`/api/v1/coffees/${SLUG}/offers`);
     expect(featured.body.data as FeaturedOfferDto[]).toEqual([]);

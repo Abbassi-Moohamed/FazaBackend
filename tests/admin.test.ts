@@ -180,6 +180,35 @@ describe("Faza backoffice", () => {
       expect((update.body.data as AdminCoffeeDto).name).toBe("Café El Manzah V2");
     });
 
+    it("lets a coffee admin configure the table-number limit from the profile", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      const update = await request(app)
+        .patch("/api/v1/admin/my-coffee")
+        .set(...bearer(token))
+        .send({ tableCount: 24 });
+      expect(update.status).toBe(200);
+      expect((update.body.data as AdminCoffeeDto).tableCount).toBe(24);
+      expect((await publicCoffee("cafe-el-manzah")).tableCount).toBe(24);
+
+      const clear = await request(app)
+        .patch("/api/v1/admin/my-coffee")
+        .set(...bearer(token))
+        .send({ tableCount: null });
+      expect(clear.status).toBe(200);
+      expect((clear.body.data as AdminCoffeeDto).tableCount).toBeNull();
+    });
+
+    it("rejects a non-positive or fractional table count", async () => {
+      const token = await coffeeToken("cafe-el-manzah");
+      for (const tableCount of [0, -1, 1.5]) {
+        const response = await request(app)
+          .patch("/api/v1/admin/my-coffee")
+          .set(...bearer(token))
+          .send({ tableCount });
+        expect(response.status).toBe(400);
+      }
+    });
+
     it("saving settings with an unchanged slug does not 409", async () => {
       const token = await coffeeToken("cafe-el-manzah");
 
@@ -578,6 +607,7 @@ describe("Faza backoffice", () => {
         "logoImageId",
         "name",
         "slug",
+        "tableCount",
         "updatedAt",
       ]);
     });

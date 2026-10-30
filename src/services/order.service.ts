@@ -19,8 +19,9 @@ import {
   type OfferRow,
 } from "../repositories/offer.repository.js";
 import {
-  createTableSession,
   assignTableSessionToServiceShift,
+  createTableSession,
+  deleteEmptyTableSession,
   findTableSessionByToken,
   generateSessionToken,
   hashSessionToken,
@@ -77,20 +78,23 @@ async function resolveTableSession(coffeeId: Types.ObjectId, tableNumber: number
     ) {
       throw new ApiError(401, "Invalid or expired session token.");
     }
-    return { session, sessionToken: suppliedToken, serviceShiftId: activeShift?._id ?? null };
+    return {
+      session,
+      sessionToken: suppliedToken,
+      serviceShiftId: activeShift?._id ?? null,
+      isNew: false,
+    };
   }
 
   // No token: this device starts its own session. A table can host several
   // concurrent sessions (different parties sharing a table), so an existing
   // session is never adopted — that would merge two customers' bills.
-  const sessionToken = generateSessionToken();
-  const session = await createTableSession({
-    coffeeId,
-    tableNumber,
+  return {
+    session: null,
+    sessionToken: generateSessionToken(),
     serviceShiftId: activeShift?._id ?? null,
-    sessionTokenHash: hashSessionToken(sessionToken),
-  });
-  return { session, sessionToken, serviceShiftId: activeShift?._id ?? null };
+    isNew: true,
+  };
 }
 
 interface ItemSnapshot {
@@ -128,8 +132,15 @@ export async function placeOrder(input: {
   offers?: { offerId: string; quantity: number }[];
   sessionToken?: string;
 }): Promise<OrderDto> {
-  const coffee = await CoffeeModel.findOne({ slug: input.coffeeSlug }).select({ _id: 1 }).lean().exec();
+  const coffee = await CoffeeModel.findOne({ slug: input.coffeeSlug }).select({ _id: 1, tableCount: 1 }).lean().exec();
   if (!coffee) throw new ApiError(404, "Coffee not found");
+  const maxTableNumber = coffee.tableCount ?? 1000;
+  if (!input.sessionToken && input.tableNumber > maxTableNumber) {
+    throw new ApiError(400, `Table number must be between 1 and ${maxTableNumber}.`, {
+      code: "TABLE_NUMBER_OUT_OF_RANGE",
+      maxTableNumber,
+    });
+  }
   const coffeeId = coffee._id.toString();
   const now = new Date();
 
@@ -219,13 +230,11 @@ export async function placeOrder(input: {
 
   const total = Math.round((itemsSubtotal + offersSubtotal) * 100) / 100;
   const session = await resolveTableSession(coffee._id, input.tableNumber, input.sessionToken);
-  if (session.serviceShiftId) {
-    await assignTableSessionToServiceShift(coffeeId, session.session._id, session.serviceShiftId);
-  }
 
   // Reserve the bundles atomically, one by one. Without MongoDB transactions
   // (standalone deployments), a failed reservation restores everything already
-  // taken; the same compensation runs if the order write fails afterwards.
+  // taken. A new table session is created only after reservations succeed, so
+  // failed orders cannot leave phantom open tables.
   const reserved: ReservedStock[] = [];
   for (const snapshot of offerSnapshots) {
     const updated = await consumeOfferStock(coffeeId, snapshot.offerId.toString(), snapshot.quantity, now);
@@ -236,8 +245,20 @@ export async function placeOrder(input: {
     reserved.push({ offerId: snapshot.offerId, quantity: snapshot.quantity });
   }
 
+  let tableSession = session.session;
   let order: Awaited<ReturnType<typeof createOrder>>;
   try {
+    if (!tableSession) {
+      tableSession = await createTableSession({
+        coffeeId: coffee._id,
+        tableNumber: input.tableNumber,
+        serviceShiftId: session.serviceShiftId,
+        sessionTokenHash: hashSessionToken(session.sessionToken),
+      });
+    } else if (session.serviceShiftId) {
+      await assignTableSessionToServiceShift(coffeeId, tableSession._id, session.serviceShiftId);
+    }
+
     order = await createOrder({
       coffeeId: coffee._id,
       tableNumber: input.tableNumber,
@@ -245,15 +266,16 @@ export async function placeOrder(input: {
       offers: offerSnapshots,
       total,
       status: "PENDING",
-      tableSessionId: session.session._id,
+      tableSessionId: tableSession._id,
       serviceShiftId: session.serviceShiftId,
     });
   } catch (error) {
     await releaseReservedStock(reserved);
+    if (session.isNew && tableSession) await deleteEmptyTableSession(tableSession._id);
     throw error;
   }
 
-  await touchTableSession(session.session._id);
+  await touchTableSession(tableSession._id);
   const result = dto(order.toObject(), session.sessionToken);
   publishOrderCreated(result);
   return result;

@@ -17,6 +17,7 @@ const SAFE_FIELDS = {
   logoImageId: 1,
   cover: 1,
   coverImageId: 1,
+  tableCount: 1,
   createdAt: 1,
   updatedAt: 1,
 } as const;
@@ -38,6 +39,7 @@ export interface AdminCoffeeRow {
   logoImageId: string | null;
   cover: string | null;
   coverImageId: string | null;
+  tableCount: number | null;
   slug: string;
   createdAt: Date;
   updatedAt: Date;
@@ -58,6 +60,7 @@ export async function findAdminCoffeeById(id: string): Promise<AdminCoffeeRow | 
     logoImageId: coffee.logoImageId ?? null,
     cover: coffee.cover ?? null,
     coverImageId: coffee.coverImageId ?? null,
+    tableCount: coffee.tableCount ?? null,
     categoryCount,
   };
 }
@@ -75,6 +78,7 @@ export async function listAdminCoffees(): Promise<AdminCoffeeRow[]> {
     logoImageId: coffee.logoImageId ?? null,
     cover: coffee.cover ?? null,
     coverImageId: coffee.coverImageId ?? null,
+    tableCount: coffee.tableCount ?? null,
     categoryCount: countByCoffeeId.get(coffee._id.toString()) ?? 0,
   }));
 }
@@ -93,6 +97,7 @@ export async function createAdminCoffee(input: AdminCoffeeCreateInput): Promise<
     logoImageId: doc.logoImageId ?? null,
     cover: doc.cover ?? null,
     coverImageId: doc.coverImageId ?? null,
+    tableCount: doc.tableCount ?? null,
     slug: doc.slug,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -137,6 +142,7 @@ export async function updateAdminCoffee(
     logoImageId: string | null;
     cover: string | null;
     coverImageId: string | null;
+    tableCount: number | null;
   }>,
 ): Promise<AdminCoffeeRow | null> {
   if (!Types.ObjectId.isValid(id)) return null;
@@ -154,6 +160,7 @@ export async function updateAdminCoffee(
     logoImageId: coffee.logoImageId ?? null,
     cover: coffee.cover ?? null,
     coverImageId: coffee.coverImageId ?? null,
+    tableCount: coffee.tableCount ?? null,
     categoryCount,
   };
 }

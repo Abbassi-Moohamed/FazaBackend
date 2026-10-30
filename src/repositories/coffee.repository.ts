@@ -15,6 +15,7 @@ export interface CoffeeWithCategoriesRecord {
   logo: string;
   cover: string | null;
   slug: string;
+  tableCount: number | null;
   categories: CategoryRecord[];
 }
 
@@ -50,6 +51,7 @@ export async function findCoffeeWithCategoriesBySlug(slug: string): Promise<Coff
     logo: coffee.logo,
     cover: coffee.cover ?? null,
     slug: coffee.slug,
+    tableCount: coffee.tableCount ?? null,
     categories: categories.map((category) => ({
       id: category._id.toString(),
       name: category.name,

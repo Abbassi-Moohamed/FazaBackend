@@ -58,6 +58,7 @@ const updateCoffeeFields = z.object({
     .optional(),
   logo: z.url("logo must be a valid URL.").optional(),
   cover: z.url("cover must be a valid URL.").optional(),
+  tableCount: z.number().int().min(1).max(10000).nullable().optional(),
   slug: coffeeSlugSchema.optional(),
 });
 
@@ -76,6 +77,7 @@ export const updateMyCoffeeBodySchema = z
       .optional(),
     logo: z.url("logo must be a valid URL.").optional(),
     cover: z.url("cover must be a valid URL.").optional(),
+    tableCount: z.number().int().min(1).max(10000).nullable().optional(),
     /**
      * Accepted only so the service can reject an actual change: a coffee admin
      * may not rename their own slug. Sending the current slug is a no-op.
